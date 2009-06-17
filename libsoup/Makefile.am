@@ -80,6 +80,7 @@ soup_headers =			\
 	soup-status.h		\
 	soup-types.h		\
 	soup-uri.h		\
+	soup-uri-loader.h	\
 	soup-value-utils.h	\
 	soup-xmlrpc.h
 
@@ -158,6 +159,7 @@ libsoup_2_4_la_SOURCES =		\
 	soup-ssl.h			\
 	soup-status.c			\
 	soup-uri.c			\
+	soup-uri-loader.c		\
 	soup-value-utils.c		\
 	soup-xmlrpc.c
 
