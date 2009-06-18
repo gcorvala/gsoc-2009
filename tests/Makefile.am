@@ -29,6 +29,7 @@ noinst_PROGRAMS =	\
 	streaming-test	\
 	timeout-test	\
 	uri-parsing	\
+	uri-loader \
 	$(CURL_TESTS)	\
 	$(APACHE_TESTS)	\
 	$(SSL_TESTS)	\
@@ -62,6 +63,7 @@ ssl_test_SOURCES = ssl-test.c $(TEST_SRCS)
 streaming_test_SOURCES = streaming-test.c $(TEST_SRCS)
 timeout_test_SOURCES = timeout-test.c $(TEST_SRCS)
 uri_parsing_SOURCES = uri-parsing.c $(TEST_SRCS)
+uri_loader_SOURCES = uri-loader.c
 xmlrpc_test_SOURCES = xmlrpc-test.c $(TEST_SRCS)
 xmlrpc_server_test_SOURCES = xmlrpc-server-test.c $(TEST_SRCS)
 
@@ -90,6 +92,7 @@ TESTS =			\
 	streaming-test	\
 	timeout-test	\
 	uri-parsing	\
+	uri-loader \
 	$(APACHE_TESTS)	\
 	$(CURL_TESTS)	\
 	$(SSL_TESTS)	\
