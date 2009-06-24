@@ -28,24 +28,24 @@ struct _SoupURILoaderClass {
   /* class members */
 };
 
-GType       	 ftp_server_get_type			(void);
+GType		 ftp_server_get_type		 (void);
 
-SoupURILoader	*soup_uri_loader_new			(void);
+SoupURILoader	*soup_uri_loader_new		 (void);
 
-GInputStream	*soup_uri_loader_load_uri		(SoupURILoader			 *loader,
-												 SoupURI				 *uri,
-												 GCancellable			 *cancellable,
-												 GError					**err);
+GInputStream	*soup_uri_loader_load_uri	 (SoupURILoader	 *loader,
+						  SoupURI	 *uri,
+						  GCancellable	 *cancellable,
+						  GError	**error);
 
-void			 soup_uri_loader_load_uri_async	(SoupURILoader			 *loader,
-												 SoupURI				 *uri,
-												 GCancellable			 *cancellable,
-												 GAsyncReadyCallback	  callback,
-												 gpointer				  user_data);
+void		 soup_uri_loader_load_uri_async	 (SoupURILoader		*loader,
+						  SoupURI		*uri,
+						  GCancellable		*cancellable,
+						  GAsyncReadyCallback	callback,
+						  gpointer		user_data);
 
-GInputStream	*soup_uri_loader_load_uri_finish (SoupURILoader			 *loader,
-												  GAsyncResult			 *result,
-												  GError				**error);
+GInputStream	*soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
+						  GAsyncResult	 *result,
+						  GError	**error);
 
 G_END_DECLS
 

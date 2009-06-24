@@ -69,6 +69,8 @@ soup_headers =			\
 	soup-misc.h     	\
 	soup-multipart.h     	\
 	soup-portability.h	\
+	soup-protocol.h		\
+	soup-protocol-ftp.h	\
 	soup-proxy-resolver.h	\
 	soup-proxy-uri-resolver.h \
 	soup-server.h		\
@@ -145,6 +147,8 @@ libsoup_2_4_la_SOURCES =		\
 	soup-nossl.c     		\
 	soup-path-map.h     		\
 	soup-path-map.c     		\
+	soup-protocol.c			\
+	soup-protocol-ftp.c		\
 	soup-proxy-resolver.c		\
 	soup-proxy-resolver-static.h	\
 	soup-proxy-resolver-static.c	\
