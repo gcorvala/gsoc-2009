@@ -29,6 +29,8 @@ SoupURILoader *
 soup_uri_loader_new (void)
 {
 	SoupURILoader *self;
+	
+	g_debug ("soup_uri_loader_new called");
 
 	self = g_object_new (SOUP_TYPE_URI_LOADER, NULL);
 	
@@ -51,7 +53,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
 		g_debug ("https");
 
-	else if (g_strcmp0 (uri->scheme ,"ftp") == 0)
+	else if (g_strcmp0 (uri->scheme, "ftp") == 0)
 	{
 		g_debug ("ftp protocol detected!");
 		protocol = SOUP_PROTOCOL (soup_protocol_ftp_new ());
@@ -60,7 +62,6 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 		g_debug ("error");
 	
 	input_stream = soup_protocol_load_uri (protocol, uri, cancellable, error);
-	//soup_protocol_load_uri_async (protocol, uri, cancellable, NULL, NULL);
 	
 	return input_stream;
 }

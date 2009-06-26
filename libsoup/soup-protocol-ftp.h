@@ -29,24 +29,11 @@ struct _SoupProtocolFtpClass {
 	SoupProtocolClass parent;
 };
 
-GType		 soup_protocol_ftp_get_type			(void);
+GType		 soup_protocol_ftp_get_type (void);
 
-SoupProtocolFtp	*soup_protocol_ftp_new				(void);
+#define SOUP_PROTOCOL_FTP_ERROR soup_protocol_ftp_error_quark()
 
-GInputStream	*soup_protocol_ftp_load_uri    (SoupProtocol		*protocol,
-					  	SoupURI			*uri,
-						GCancellable		*cancellable,
-						GError		       **error);
-
-void		 soup_protocol_ftp_load_uri_async (SoupProtocol		*protocol,
-						   SoupURI		*uri,
-						   GCancellable		*cancellable,
-						   GAsyncReadyCallback	 callback,
-						   gpointer		 user_data);
-
-GInputStream	*soup_protocol_ftp_load_uri_finish (SoupProtocol	*protocol,
-						    GAsyncResult	*result,
-						    GError	       **error);
+SoupProtocolFtp	*soup_protocol_ftp_new	    (void);
 
 G_END_DECLS
 
