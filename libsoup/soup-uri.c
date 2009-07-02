@@ -95,7 +95,7 @@ static void append_uri_encoded (GString *str, const char *in, const char *extra_
 static char *uri_decoded_copy (const char *str, int length);
 static char *uri_normalized_copy (const char *str, int length, const char *unescape_extra, gboolean fixup);
 
-const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS;
+const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP;
 
 static inline const char *
 soup_uri_get_scheme (const char *scheme, int len)
@@ -121,6 +121,8 @@ soup_scheme_default_port (const char *scheme)
 		return 80;
 	else if (scheme == SOUP_URI_SCHEME_HTTPS)
 		return 443;
+	else if (scheme == SOUP_URI_SCHEME_FTP)
+		return 21;
 	else
 		return 0;
 }
@@ -746,7 +748,8 @@ gboolean
 soup_uri_uses_default_port (SoupURI *uri)
 {
 	g_return_val_if_fail (uri->scheme == SOUP_URI_SCHEME_HTTP ||
-			      uri->scheme == SOUP_URI_SCHEME_HTTPS, FALSE);
+			      uri->scheme == SOUP_URI_SCHEME_HTTPS ||
+			      uri->scheme == SOUP_URI_SCHEME_FTP, FALSE);
 
 	return uri->port == soup_scheme_default_port (uri->scheme);
 }

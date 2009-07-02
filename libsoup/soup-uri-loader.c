@@ -74,7 +74,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
 		g_debug ("https");
 
-	else if (g_strcmp0 (uri->scheme, "ftp") == 0)
+	else if (uri->scheme == SOUP_URI_SCHEME_FTP)
 	{
 		g_debug ("ftp protocol detected!");
 		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);

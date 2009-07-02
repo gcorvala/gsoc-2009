@@ -32,7 +32,8 @@ GType     soup_uri_get_type          (void);
 
 #define SOUP_URI_SCHEME_HTTP  (_SOUP_URI_SCHEME_HTTP ? _SOUP_URI_SCHEME_HTTP : (_SOUP_URI_SCHEME_HTTP = g_intern_static_string ("http")))
 #define SOUP_URI_SCHEME_HTTPS (_SOUP_URI_SCHEME_HTTPS ? _SOUP_URI_SCHEME_HTTPS : (_SOUP_URI_SCHEME_HTTPS = g_intern_static_string ("https")))
-extern const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS;
+#define SOUP_URI_SCHEME_FTP (_SOUP_URI_SCHEME_FTP ? _SOUP_URI_SCHEME_FTP : (_SOUP_URI_SCHEME_FTP = g_intern_static_string ("ftp")))
+extern const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP;
 
 SoupURI  *soup_uri_new_with_base         (SoupURI    *base,
 					  const char *uri_string);
