@@ -11,35 +11,43 @@ main (int argc, char **argv)
 	SoupURILoader *loader;
 	SoupURI *uri;
 	GError *error = NULL;
+	GInputStream *input;
+	GDataInputStream *data;
+	gchar *buffer;
+	gsize len;
 
 	g_type_init ();
-	g_thread_init (NULL);
 
+	/**
+	 * Construct SoupURI
+	 **/
 	uri = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/about/index.html");
-	g_print ("uri-scheme - %s\n", uri->scheme);
-	g_print ("uri-user   - %s\n", uri->user);
-	g_print ("uri-pass   - %s\n", uri->password);
-	g_print ("uri-host   - %s\n", uri->host);
-	g_print ("uri-port   - %u\n", uri->port);
-	g_print ("uri-path   - %s\n", uri->path);
-	g_print ("uri-query  - %s\n", uri->query);
-	g_print ("uri-frag   - %s\n", uri->fragment);
 
+	/**
+	 * Construct SoupURILoader
+	 **/
 	loader = soup_uri_loader_new ();
+	input = soup_uri_loader_load_uri (loader, uri, NULL, &error);
 	
-	GInputStream *test = soup_uri_loader_load_uri (loader, uri, NULL, &error);
-	
+	/**
+	 * SoupURILoader failed
+	 **/
 	if (error)
 	{
-		g_debug ("error->code : %u\nerror->message : %s", error->code, error->message);
+		g_debug ("error->code : %u", error->code);
+		g_debug ("error->message : %s", error->message);
 		return 1;
 	}
-	
-	GDataInputStream *data = g_data_input_stream_new (test);
-	gsize len;
-	gchar *buffer = g_data_input_stream_read_line       (data, &len, NULL, NULL);
 
-	g_debug ("-len = %u\n-buffer = \n%s", len, buffer);
+	/**
+	 * SoupURILoader success
+	 * Try to read GInputStream content
+	 **/
+	data = g_data_input_stream_new (input);
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+
+	g_debug ("buffer_length  = %u", len);
+	g_debug ("buffer_content = %s", buffer);
 
 	return 0;
 }

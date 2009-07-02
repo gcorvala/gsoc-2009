@@ -32,6 +32,7 @@ GSource           *soup_add_timeout          (GMainContext *async_context,
 guint              soup_str_case_hash        (gconstpointer key);
 gboolean           soup_str_case_equal       (gconstpointer v1,
 					      gconstpointer v2);
+guint		   soup_str_to_uint	     (const gchar *str);
 
 /* SSL stuff */
 

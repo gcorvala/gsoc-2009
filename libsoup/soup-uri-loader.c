@@ -7,6 +7,7 @@
 struct _SoupURILoaderPrivate
 {
 	SoupURI *uri;
+	GHashTable *protocols;
 };
 
 G_DEFINE_TYPE (SoupURILoader, soup_uri_loader, G_TYPE_OBJECT); 
@@ -23,6 +24,8 @@ soup_uri_loader_init (SoupURILoader *self)
 	SoupURILoaderPrivate *priv;
 
 	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
+	
+	priv->protocols = g_hash_table_new (g_str_hash, g_str_equal);
 }
 
 SoupURILoader *
@@ -44,6 +47,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 			  GCancellable	 *cancellable,
 			  GError	**error)
 {
+	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	GInputStream *input_stream;
 	SoupProtocol *protocol;
 
@@ -56,7 +60,12 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	else if (g_strcmp0 (uri->scheme, "ftp") == 0)
 	{
 		g_debug ("ftp protocol detected!");
-		protocol = SOUP_PROTOCOL (soup_protocol_ftp_new ());
+		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
+		if (protocol == NULL)
+		{
+			protocol = SOUP_PROTOCOL (soup_protocol_ftp_new ());
+			g_hash_table_insert (priv->protocols, uri->scheme, protocol);
+		}
 	}
 	else
 		g_debug ("error");

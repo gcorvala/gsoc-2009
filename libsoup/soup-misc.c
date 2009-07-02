@@ -164,3 +164,14 @@ soup_add_timeout (GMainContext *async_context,
 	g_source_unref (source);
 	return source;
 }
+
+guint
+soup_str_to_uint (const gchar *str)
+{
+	guint16 ret = 0;
+	
+	while (*str != '\0')
+		ret = ret * 10 + g_ascii_xdigit_value (str++[0]);
+
+	return ret;
+}
