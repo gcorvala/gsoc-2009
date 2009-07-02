@@ -6,16 +6,33 @@
 
 struct _SoupURILoaderPrivate
 {
-	SoupURI *uri;
 	GHashTable *protocols;
 };
 
 G_DEFINE_TYPE (SoupURILoader, soup_uri_loader, G_TYPE_OBJECT); 
 
 static void
+soup_uri_loader_finalize (GObject *object)
+{
+	SoupURILoader *loader;
+	SoupURILoaderPrivate *priv;
+
+	loader = SOUP_URI_LOADER (object);
+	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+
+	g_hash_table_destroy (priv->protocols);
+
+	G_OBJECT_CLASS (soup_uri_loader_parent_class)->finalize (object);
+}
+
+static void
 soup_uri_loader_class_init (SoupURILoaderClass *klass)
 {
+	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+	
 	g_type_class_add_private (klass, sizeof (SoupURILoaderPrivate));
+	
+	gobject_class->finalize = soup_uri_loader_finalize;
 }
 
 static void
@@ -25,7 +42,7 @@ soup_uri_loader_init (SoupURILoader *self)
 
 	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
 	
-	priv->protocols = g_hash_table_new (g_str_hash, g_str_equal);
+	priv->protocols = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
 }
 
 SoupURILoader *
