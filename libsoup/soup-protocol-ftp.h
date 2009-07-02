@@ -33,7 +33,7 @@ GType		 soup_protocol_ftp_get_type (void);
 
 #define SOUP_PROTOCOL_FTP_ERROR soup_protocol_ftp_error_quark()
 
-SoupProtocolFtp	*soup_protocol_ftp_new	    (void);
+SoupProtocol	*soup_protocol_ftp_new	    (void);
 
 G_END_DECLS
 

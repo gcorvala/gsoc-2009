@@ -80,7 +80,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
 		if (protocol == NULL)
 		{
-			protocol = SOUP_PROTOCOL (soup_protocol_ftp_new ());
+			protocol = soup_protocol_ftp_new ();
 			g_hash_table_insert (priv->protocols, uri->scheme, protocol);
 		}
 	}

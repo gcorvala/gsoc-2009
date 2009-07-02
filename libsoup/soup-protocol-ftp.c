@@ -134,14 +134,14 @@ soup_protocol_ftp_init (SoupProtocolFtp *self)
 	priv->connections = g_hash_table_new (ftp_hash_uri, ftp_hash_equal);
 }
 
-SoupProtocolFtp *
+SoupProtocol *
 soup_protocol_ftp_new (void)
 {
 	SoupProtocolFtp *self;
 
 	self = g_object_new (SOUP_TYPE_PROTOCOL_FTP, NULL);
 	
-	return self;
+	return SOUP_PROTOCOL_FTP (self);
 }
 
 GInputStream *
