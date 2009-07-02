@@ -107,9 +107,25 @@ guint		      ftp_hash_uri			(gconstpointer key);
 
 gboolean	      ftp_hash_equal			(gconstpointer a,
 							 gconstpointer b);
+
+static void
+soup_protocol_ftp_finalize (GObject *object)
+{
+	SoupProtocolFTP *ftp;
+	SoupProtocolFTPPrivate *priv;
+
+	ftp = SOUP_PROTOCOL_FTP (object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (ftp);
+
+	g_hash_table_destroy (priv->connections);
+
+	G_OBJECT_CLASS (soup_protocol_ftp_parent_class)->finalize (object);
+}
+
 static void
 soup_protocol_ftp_class_init (SoupProtocolFTPClass *klass)
 {
+	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
 	SoupProtocolClass *protocol_class = SOUP_PROTOCOL_CLASS (klass);
 
 	g_debug ("soup_protocol_ftp_class_init called");
@@ -120,6 +136,8 @@ soup_protocol_ftp_class_init (SoupProtocolFTPClass *klass)
 	protocol_class->load_uri = soup_protocol_ftp_load_uri;
 	protocol_class->load_uri_async = soup_protocol_ftp_load_uri_async;
 	protocol_class->load_uri_finish = soup_protocol_ftp_load_uri_finish;
+
+	gobject_class->finalize = soup_protocol_ftp_finalize;
 }
 
 static void
@@ -131,7 +149,7 @@ soup_protocol_ftp_init (SoupProtocolFTP *self)
 
 	self->priv = priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (self);
 	
-	priv->connections = g_hash_table_new (ftp_hash_uri, ftp_hash_equal);
+	priv->connections = g_hash_table_new_full (ftp_hash_uri, ftp_hash_equal, soup_uri_free, g_object_unref);
 }
 
 SoupProtocol *
@@ -140,7 +158,7 @@ soup_protocol_ftp_new (void)
 	SoupProtocolFTP *self;
 
 	self = g_object_new (SOUP_TYPE_PROTOCOL_FTP, NULL);
-	
+
 	return SOUP_PROTOCOL_FTP (self);
 }
 
