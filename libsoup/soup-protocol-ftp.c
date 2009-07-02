@@ -2,14 +2,14 @@
 #include "soup-misc.h"
 #include <string.h>
 
-#define SOUP_PROTOCOL_FTP_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFtpPrivate))
+#define SOUP_PROTOCOL_FTP_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFTPPrivate))
 
-struct _SoupProtocolFtpPrivate
+struct _SoupProtocolFTPPrivate
 {
 	GHashTable *connections;
 };
 
-struct _SoupProtocolFtpReply
+struct _SoupProtocolFTPReply
 {
 	guint16		code;
 	GString        *message;
@@ -62,9 +62,9 @@ typedef enum {
 	SOUP_FTP_STORAGE_EXCEEDED = 552,
 	SOUP_FTP_BAD_FILE_NAME = 553
 	
-} SoupProtocolFtpReplyCode;
+} SoupProtocolFTPReplyCode;
 
-G_DEFINE_TYPE (SoupProtocolFtp, soup_protocol_ftp, SOUP_TYPE_PROTOCOL);
+G_DEFINE_TYPE (SoupProtocolFTP, soup_protocol_ftp, SOUP_TYPE_PROTOCOL);
 
 
 GInputStream	     *soup_protocol_ftp_load_uri	(SoupProtocol	       *protocol,
@@ -82,7 +82,7 @@ GInputStream	     *soup_protocol_ftp_load_uri_finish (SoupProtocol	       *proto
 							 GAsyncResult	       *result,
 							 GError		      **error);
 
-SoupProtocolFtpReply *ftp_receive_reply			(GSocketConnection     *conn,
+SoupProtocolFTPReply *ftp_receive_reply			(GSocketConnection     *conn,
 							 GCancellable	       *cancellable,
 							 GError		      **error);
 
@@ -95,7 +95,7 @@ GSocketConnection    *ftp_connection 			(SoupURI	       *uri,
 							 GCancellable	       *cancellable,
 							 GError		      **error);
 
-GInputStream	     *ftp_get_data_input_stream		(SoupProtocolFtp       *protocol,
+GInputStream	     *ftp_get_data_input_stream		(SoupProtocolFTP       *protocol,
 							 GSocketConnection     *control,
 							 SoupURI	       *uri,
 							 GCancellable	       *cancellable,
@@ -108,13 +108,13 @@ guint		      ftp_hash_uri			(gconstpointer key);
 gboolean	      ftp_hash_equal			(gconstpointer a,
 							 gconstpointer b);
 static void
-soup_protocol_ftp_class_init (SoupProtocolFtpClass *klass)
+soup_protocol_ftp_class_init (SoupProtocolFTPClass *klass)
 {
 	SoupProtocolClass *protocol_class = SOUP_PROTOCOL_CLASS (klass);
 
 	g_debug ("soup_protocol_ftp_class_init called");
 
-	g_type_class_add_private (klass, sizeof (SoupProtocolFtpPrivate));
+	g_type_class_add_private (klass, sizeof (SoupProtocolFTPPrivate));
 	
 	/* virtual method definition */
 	protocol_class->load_uri = soup_protocol_ftp_load_uri;
@@ -123,9 +123,9 @@ soup_protocol_ftp_class_init (SoupProtocolFtpClass *klass)
 }
 
 static void
-soup_protocol_ftp_init (SoupProtocolFtp *self)
+soup_protocol_ftp_init (SoupProtocolFTP *self)
 {
-	SoupProtocolFtpPrivate *priv;
+	SoupProtocolFTPPrivate *priv;
 	
 	g_debug ("soup_protocol_ftp_init called");
 
@@ -137,7 +137,7 @@ soup_protocol_ftp_init (SoupProtocolFtp *self)
 SoupProtocol *
 soup_protocol_ftp_new (void)
 {
-	SoupProtocolFtp *self;
+	SoupProtocolFTP *self;
 
 	self = g_object_new (SOUP_TYPE_PROTOCOL_FTP, NULL);
 	
@@ -150,8 +150,8 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    GCancellable		*cancellable,
 			    GError		       **error)
 {
-	SoupProtocolFtp *protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
-	SoupProtocolFtpPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
+	SoupProtocolFTP *protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
+	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	GInputStream *input_stream;
 	GSocketConnection *control;
 
@@ -228,12 +228,12 @@ ftp_send_command (GSocketConnection *conn,
 	return g_data_output_stream_put_string (output, request, cancellable, error);
 }
 
-SoupProtocolFtpReply *
+SoupProtocolFTPReply *
 ftp_receive_reply (GSocketConnection *conn,
 		   GCancellable      *cancellable,
 		   GError	     **error)
 {
-	SoupProtocolFtpReply *reply = g_malloc0 (sizeof (SoupProtocolFtpReply));
+	SoupProtocolFTPReply *reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
 	char *buffer;
 	gsize len;
 	gboolean multi_line = FALSE;
@@ -281,7 +281,7 @@ ftp_connection (SoupURI	     *uri,
 {
 	GSocketConnection *control;
 	GString *msg = g_string_new (NULL);
-	SoupProtocolFtpReply *reply;
+	SoupProtocolFTPReply *reply;
 
 	g_string_printf (msg, "%s:%u", uri->host, uri->port);
 
@@ -352,14 +352,14 @@ ftp_connection (SoupURI	     *uri,
 }
 
 GInputStream *
-ftp_get_data_input_stream (SoupProtocolFtp   *protocol,
+ftp_get_data_input_stream (SoupProtocolFTP   *protocol,
 			   GSocketConnection *control,
 			   SoupURI 	     *uri,
 			   GCancellable      *cancellable,
 			   GError           **error)
 {
 	GSocketConnection *data_connection;
-	SoupProtocolFtpReply *reply;
+	SoupProtocolFTPReply *reply;
 	GString *msg = g_string_new (NULL);
 	GRegex *regex;
 	guint16 port;

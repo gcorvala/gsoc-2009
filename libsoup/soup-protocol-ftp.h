@@ -8,24 +8,24 @@
 G_BEGIN_DECLS
 
 #define SOUP_TYPE_PROTOCOL_FTP            (soup_protocol_ftp_get_type ())
-#define SOUP_PROTOCOL_FTP(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFtp))
-#define SOUP_PROTOCOL_FTP_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFtp))
+#define SOUP_PROTOCOL_FTP(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFTP))
+#define SOUP_PROTOCOL_FTP_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFTP))
 #define SOUP_IS_PROTOCOL_FTP(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), SOUP_TYPE_PROTOCOL_FTP))
 #define SOUP_IS_PROTOCOL_FTP_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((obj), SOUP_TYPE_PROTOCOL_FTP))
-#define SOUP_PROTOCOL_FTP_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFtpClass))
+#define SOUP_PROTOCOL_FTP_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFTPClass))
 
-typedef struct _SoupProtocolFtp SoupProtocolFtp;
-typedef struct _SoupProtocolFtpClass SoupProtocolFtpClass;
-typedef struct _SoupProtocolFtpPrivate SoupProtocolFtpPrivate;
-typedef struct _SoupProtocolFtpReply SoupProtocolFtpReply;
+typedef struct _SoupProtocolFTP SoupProtocolFTP;
+typedef struct _SoupProtocolFTPClass SoupProtocolFTPClass;
+typedef struct _SoupProtocolFTPPrivate SoupProtocolFTPPrivate;
+typedef struct _SoupProtocolFTPReply SoupProtocolFTPReply;
 
-struct _SoupProtocolFtp {
+struct _SoupProtocolFTP {
 	SoupProtocol parent;
 	/* < private > */
-	SoupProtocolFtpPrivate *priv;
+	SoupProtocolFTPPrivate *priv;
 };
 
-struct _SoupProtocolFtpClass {
+struct _SoupProtocolFTPClass {
 	SoupProtocolClass parent;
 };
 
