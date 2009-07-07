@@ -159,7 +159,7 @@ soup_protocol_ftp_new (void)
 
 	self = g_object_new (SOUP_TYPE_PROTOCOL_FTP, NULL);
 
-	return SOUP_PROTOCOL_FTP (self);
+	return SOUP_PROTOCOL (self);
 }
 
 GInputStream *
@@ -238,14 +238,26 @@ ftp_send_command (GSocketConnection *conn,
 		  GCancellable *cancellable,
 		  GError **error)
 {
+	GOutputStream *output;
 	gchar *request;
-	GDataOutputStream *output = g_data_output_stream_new (g_io_stream_get_output_stream (G_IO_STREAM (conn)));
+	gboolean success;
+
+	output = g_io_stream_get_output_stream (G_IO_STREAM (conn));
 
 	request = g_strconcat (str, "\r\n", NULL);
 
 	g_debug ("---> %s", str);
 
-	return g_data_output_stream_put_string (output, request, cancellable, error);
+	success = g_output_stream_write_all (output,
+					     request,
+					     strlen (request),
+					     NULL,
+					     cancellable,
+					     error);
+
+	g_free (request);
+
+	return success;
 }
 
 SoupProtocolFTPReply *
