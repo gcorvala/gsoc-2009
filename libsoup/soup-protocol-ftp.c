@@ -17,6 +17,9 @@ struct _SoupProtocolFTPReply
 
 typedef enum {
 	SOUP_FTP_NONE,
+	/* 0yz used only by SoupProtocolFTP */
+	SOUP_FTP_BAD_ANSWER = 0,
+
 	/* 1yz Positive Preliminary reply */
 	SOUP_FTP_RESTART_MARKER = 110,
 	SOUP_FTP_SERVICE_DELAY = 120,
@@ -63,6 +66,8 @@ typedef enum {
 	SOUP_FTP_BAD_FILE_NAME = 553
 	
 } SoupProtocolFTPReplyCode;
+
+#define SOUP_PARSE_FTP_STATUS(buffer) (buffer[0] * 100 + buffer[1] * 10 + buffer[2])
 
 G_DEFINE_TYPE (SoupProtocolFTP, soup_protocol_ftp, SOUP_TYPE_PROTOCOL);
 
@@ -246,8 +251,6 @@ ftp_send_command (GSocketConnection *conn,
 
 	request = g_strconcat (str, "\r\n", NULL);
 
-	g_debug ("---> %s", str);
-
 	success = g_output_stream_write_all (output,
 					     request,
 					     strlen (request),
@@ -257,6 +260,8 @@ ftp_send_command (GSocketConnection *conn,
 
 	g_free (request);
 
+	g_debug ("---> %s", str);
+
 	return success;
 }
 
@@ -265,15 +270,34 @@ ftp_receive_reply (GSocketConnection *conn,
 		   GCancellable      *cancellable,
 		   GError	     **error)
 {
+	/* Leaked @input. It's also not very efficient to create a new
+	 * GDataInputStream every time you call ftp_receive_reply. It
+	 * would be better to create it once, when you first make the
+	 * GSocketConnection, and store it somewhere (and make sure to
+	 * unref it when you're done with the connection).
+	 */
+
 	SoupProtocolFTPReply *reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
+	GDataInputStream *input;
 	char *buffer;
 	gsize len;
 	gboolean multi_line = FALSE;
 
-	GDataInputStream *input = g_data_input_stream_new (g_io_stream_get_input_stream (G_IO_STREAM (conn)));
+	input = g_data_input_stream_new (g_io_stream_get_input_stream (G_IO_STREAM (conn)));
 	g_data_input_stream_set_newline_type (input, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
 
 	buffer = g_data_input_stream_read_line (input, &len, cancellable, error);
+
+	if (buffer == NULL)
+		return NULL;
+
+	if (len < 4) {
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     SOUP_FTP_BAD_ANSWER,
+				     "Bad FTP answer (less than 4 character)");
+		return NULL;
+	}
 
 	reply->code = 100 * g_ascii_digit_value (buffer[0])
 		     + 10 * g_ascii_digit_value (buffer[1])
@@ -292,17 +316,17 @@ ftp_receive_reply (GSocketConnection *conn,
 
 		buffer = g_data_input_stream_read_line (input, &len, cancellable, error);
 
-		if (g_ascii_digit_value (buffer[0]) == reply->code / 100 &&
-		    g_ascii_digit_value (buffer[1]) == reply->code / 10 % 10 &&
-		    g_ascii_digit_value (buffer[2]) == reply->code % 10 &&
+		if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code &&
 		    buffer[3] == ' ')
 			multi_line = FALSE;
 		else
 			g_string_append (reply->message, buffer);
 	}
 	
-	g_debug ("<--- [%u] %s", reply->code, reply->message->str);
+	g_free (buffer);
 	
+	g_debug ("<--- [%u] %s", reply->code, reply->message->str);
+
 	return reply;
 }
 
@@ -312,32 +336,43 @@ ftp_connection (SoupURI	     *uri,
 		GError	    **error)
 {
 	GSocketConnection *control;
-	GString *msg = g_string_new (NULL);
+	gchar *msg;
 	SoupProtocolFTPReply *reply;
 
-	g_string_printf (msg, "%s:%u", uri->host, uri->port);
-
 	control = g_socket_client_connect_to_host (g_socket_client_new (),
-						   msg->str,
-						   21,
+						   uri->host,
+						   uri->port,
 						   cancellable,
 						   error);
 
-	if (*error)
-	{
-		g_debug ("error - %s", (*error)->message);
-		
+	if (control == NULL)
 		return NULL;
-	}
 	
 	reply = ftp_receive_reply (control, cancellable, error);
 	
+	if (reply == NULL) {
+		g_object_unref (control);
+		return NULL;
+	}
+
 	/**
 	 * Authentication USER + PASS
 	 **/
-	g_string_printf (msg, "USER %s", uri->user);
-	ftp_send_command (control, msg->str, NULL, error);
+	msg = g_strdup_printf ("USER %s", uri->user);
+
+	if (ftp_send_command (control, msg, NULL, error) == FALSE) {
+		g_object_unref (control);
+		g_free (msg);
+		return NULL;
+	}
+
 	reply = ftp_receive_reply (control, NULL, error);
+
+	if (reply == NULL) {
+		g_object_unref (control);
+		g_free (msg);
+		return NULL;
+	}
 
 	if (reply->code == SOUP_FTP_NOT_LOGGED ||
 	    reply->code == SOUP_FTP_CMD_SYNTAX_ERROR ||
@@ -349,16 +384,22 @@ ftp_connection (SoupURI	     *uri,
 	    			     SOUP_PROTOCOL_FTP_ERROR,
 				     reply->code,
 				     reply->message->str);
+		g_object_unref (control);
+		g_free (msg);
+		g_free (reply);
 		return NULL;
 	}
 
-	else if (reply->code == SOUP_FTP_USER_LOGGED)
-		return NULL;
+	else if (reply->code == SOUP_FTP_USER_LOGGED) {
+		g_free (msg);
+		g_free (reply);
+		return control;
+	}
 
 	/* else - SOUP_FTP_USER_OK_NEED_PASS */
 
-	g_string_printf (msg, "PASS %s", uri->password);
-	ftp_send_command (control, msg->str, NULL, error);
+	msg = g_strdup_printf ("PASS %s", uri->password);
+	ftp_send_command (control, msg, NULL, error);
 	reply = ftp_receive_reply (control, NULL, error);
 	
 	if (reply->code == SOUP_FTP_CMD_UNKNOWN ||
