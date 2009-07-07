@@ -191,8 +191,10 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	if (control == NULL)
 	{
 		control = ftp_connection (uri, cancellable, error);
-		if (*error)
+
+		if (control == NULL)
 			return NULL;
+
 		g_hash_table_insert (priv->connections, uri, control);
 	}
 
