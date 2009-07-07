@@ -195,7 +195,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		if (control == NULL)
 			return NULL;
 
-		g_hash_table_insert (priv->connections, uri, control);
+		g_hash_table_insert (priv->connections, soup_uri_copy (uri), control);
 	}
 
 	/**
