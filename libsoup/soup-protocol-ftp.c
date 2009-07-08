@@ -1,6 +1,7 @@
 #include "soup-protocol-ftp.h"
 #include "soup-misc.h"
 #include <string.h>
+#include <stdlib.h>
 
 #define SOUP_PROTOCOL_FTP_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), SOUP_TYPE_PROTOCOL_FTP, SoupProtocolFTPPrivate))
 
@@ -100,7 +101,7 @@ GSocketConnection    *ftp_connection 			(SoupURI	       *uri,
 							 GCancellable	       *cancellable,
 							 GError		      **error);
 
-GInputStream	     *ftp_get_data_input_stream		(SoupProtocolFTP       *protocol,
+GSocketConnection    *ftp_get_data			(SoupProtocolFTP       *protocol,
 							 GSocketConnection     *control,
 							 SoupURI	       *uri,
 							 GCancellable	       *cancellable,
@@ -112,6 +113,8 @@ guint		      ftp_hash_uri			(gconstpointer key);
 
 gboolean	      ftp_hash_equal			(gconstpointer a,
 							 gconstpointer b);
+
+void		      ftp_reply_free			(SoupProtocolFTPReply *reply);
 
 static void
 soup_protocol_ftp_finalize (GObject *object)
@@ -177,6 +180,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	GInputStream *input_stream;
 	GSocketConnection *control;
+	GSocketConnection *data;
 
 	g_debug ("soup_protocol_ftp_load_uri called");
 	
@@ -206,9 +210,9 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	/**
 	 * Get the data input stream containing the file
 	 **/
-	input_stream = ftp_get_data_input_stream (protocol_ftp, control, uri, cancellable, error);
+	data = ftp_get_data (protocol_ftp, control, uri, cancellable, error);
 
-	return input_stream;
+	return g_io_stream_get_input_stream (G_IO_STREAM (data));
 }
 
 void
@@ -360,13 +364,13 @@ ftp_connection (SoupURI	     *uri,
 	 **/
 	msg = g_strdup_printf ("USER %s", uri->user);
 
-	if (ftp_send_command (control, msg, NULL, error) == FALSE) {
+	if (ftp_send_command (control, msg, cancellable, error) == FALSE) {
 		g_object_unref (control);
 		g_free (msg);
 		return NULL;
 	}
 
-	reply = ftp_receive_reply (control, NULL, error);
+	reply = ftp_receive_reply (control, cancellable, error);
 
 	if (reply == NULL) {
 		g_object_unref (control);
@@ -383,24 +387,39 @@ ftp_connection (SoupURI	     *uri,
 		g_set_error_literal (error,
 	    			     SOUP_PROTOCOL_FTP_ERROR,
 				     reply->code,
-				     reply->message->str);
+				     g_strdup (reply->message->str));
 		g_object_unref (control);
 		g_free (msg);
-		g_free (reply);
+		ftp_reply_free (reply);
 		return NULL;
 	}
 
 	else if (reply->code == SOUP_FTP_USER_LOGGED) {
 		g_free (msg);
-		g_free (reply);
+		ftp_reply_free (reply);
 		return control;
 	}
 
 	/* else - SOUP_FTP_USER_OK_NEED_PASS */
 
+	g_free (msg);
 	msg = g_strdup_printf ("PASS %s", uri->password);
-	ftp_send_command (control, msg, NULL, error);
-	reply = ftp_receive_reply (control, NULL, error);
+
+	if (ftp_send_command (control, msg, cancellable, error) == FALSE) {
+		g_object_unref (control);
+		g_free (msg);
+		ftp_reply_free (reply);
+		return NULL;
+	}
+
+	reply = ftp_receive_reply (control, cancellable, error);
+
+	if (reply == NULL) {
+		g_object_unref (control);
+		g_free (msg);
+		ftp_reply_free (reply);
+		return NULL;
+	}
 	
 	if (reply->code == SOUP_FTP_CMD_UNKNOWN ||
 	    reply->code == SOUP_FTP_NOT_LOGGED ||
@@ -413,7 +432,10 @@ ftp_connection (SoupURI	     *uri,
 		g_set_error_literal (error,
 	    			     SOUP_PROTOCOL_FTP_ERROR,
 				     reply->code,
-				     reply->message->str);
+				     g_strdup (reply->message->str));
+		g_object_unref (control);
+		g_free (msg);
+		ftp_reply_free (reply);
 		return NULL;
 	}
 
@@ -421,34 +443,43 @@ ftp_connection (SoupURI	     *uri,
 	/**
 	 * Authentication success
 	 **/
+
+	g_free (msg);
+	ftp_reply_free (reply);
+
 	return control;
 }
 
-GInputStream *
-ftp_get_data_input_stream (SoupProtocolFTP   *protocol,
-			   GSocketConnection *control,
-			   SoupURI 	     *uri,
-			   GCancellable      *cancellable,
-			   GError           **error)
+GSocketConnection *
+ftp_get_data (SoupProtocolFTP	*protocol,
+	      GSocketConnection *control,
+	      SoupURI		*uri,
+	      GCancellable	*cancellable,
+	      GError	       **error)
 {
 	GSocketConnection *data_connection;
 	SoupProtocolFTPReply *reply;
-	GString *msg = g_string_new (NULL);
 	GRegex *regex;
-	guint16 port;
 	gchar **split;
+	guint16 port;
+	gchar *buffer;
 	/**
 	 * Detect the PASSIVE/ACTIVE MODE
 	 * By default : PASSIVE
 	 * TODO : ACTIVE
 	 **/
-	
+
 	/**
 	 * Passive connection
 	 * TODO: check ipv6 answer for PASV and maybe use the EPSV
 	 **/
-	ftp_send_command (control, "PASV", cancellable, error);
+	if (ftp_send_command (control, "PASV", cancellable, error) == FALSE)
+		return NULL;
+
 	reply = ftp_receive_reply (control, cancellable, error);
+
+	if (reply == NULL)
+		return NULL;
 
 	if (reply->code == SOUP_FTP_CMD_SYNTAX_ERROR ||
 	    reply->code == SOUP_FTP_PARAM_SYNTAX_ERROR ||
@@ -456,9 +487,10 @@ ftp_get_data_input_stream (SoupProtocolFTP   *protocol,
 	    reply->code == SOUP_FTP_NOT_LOGGED)
 	{
 		g_set_error_literal (error,
-	    			     SOUP_PROTOCOL_FTP_ERROR,
+				     SOUP_PROTOCOL_FTP_ERROR,
 				     reply->code,
-				     reply->message->str);
+				     g_strdup (reply->message->str));
+		ftp_reply_free (reply);
 		return NULL;
 	}
 
@@ -467,20 +499,27 @@ ftp_get_data_input_stream (SoupProtocolFTP   *protocol,
 		/**
 		 * Active connection
 		 **/
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     1,
+				     "Active connection not yet implemented");
+		ftp_reply_free (reply);
+		return NULL;
 	}
-	
+
 	else
 	{
 		/**
 		 * Passive connection (h1,h2,h3,h4,p1,p2)
 		 **/
-		regex = g_regex_new ("([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*)", 0, 0, error);
-		split = g_regex_split_full (regex, reply->message->str,
-					    -1, 0, 0, 6, error);
+		regex = g_regex_new ("([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*)", 0, 0, NULL);
+		split = g_regex_split_full (regex, reply->message->str, -1, 0, 0, 6, NULL);
+		g_regex_unref (regex);
+		ftp_reply_free (reply);
 		/**
 		 * if IPV4
 		 **/
-		g_string_printf (msg, "%s.%s.%s.%s", split[1], split[2], split[3], split[4]);
+		buffer = g_strdup_printf ("%s.%s.%s.%s", split[1], split[2], split[3], split[4]);
 		/**
 		 * if IPV6
 		 * USE PASV
@@ -489,25 +528,47 @@ ftp_get_data_input_stream (SoupProtocolFTP   *protocol,
 		 * USE EPSV
 		 **/
 
-		port = 256 * soup_str_to_uint (split[5]) + soup_str_to_uint (split[6]);
+		port = 256 * atoi (split[5]) + atoi (split[6]);
 
-		g_string_append_printf (msg, ":%u", port);
+		g_strfreev (split);
+
 		data_connection = g_socket_client_connect_to_host (g_socket_client_new (),
-									msg->str,
-									21,
-									NULL,
-									NULL);
+								   buffer,
+								   port,
+								   cancellable,
+								   error);
+		g_free (buffer);
+
+		if (data_connection == NULL) {
+			return NULL;
+		}
 	}
 
-	g_string_printf (msg, "RETR %s", uri->path);
-	ftp_send_command (control, msg->str, cancellable, error);
+	buffer = g_strdup_printf ("RETR %s", uri->path);
+
+	if (ftp_send_command (control, buffer, cancellable, error) == FALSE)
+		return NULL;
+
+	g_free (buffer);
 
 	reply = ftp_receive_reply (control, cancellable, error);
+
+	if (reply == NULL) {
+		return NULL;
+	}
+
+	ftp_reply_free (reply);
+
 	reply = ftp_receive_reply (control, cancellable, error);
 
-	return g_io_stream_get_input_stream (G_IO_STREAM (data_connection));
+	if (reply == NULL) {
+		return NULL;
+	}
+
+	ftp_reply_free (reply);
+
+	return data_connection;
 }
-
 
 GQuark
 soup_protocol_ftp_error_quark (void)
@@ -541,4 +602,10 @@ ftp_hash_equal (gconstpointer a,
 		return TRUE;
 
 	return FALSE;
+}
+
+void
+ftp_reply_free (SoupProtocolFTPReply *reply)
+{
+	g_string_free (reply->message, TRUE);
 }
