@@ -20,6 +20,8 @@ typedef enum {
 	SOUP_FTP_NONE,
 	/* 0yz used only by SoupProtocolFTP */
 	SOUP_FTP_BAD_ANSWER = 0,
+	SOUP_FTP_INVALID_PATH = 1,
+	SOUP_FTP_ACTIVE_NOT_IMPLEMENTED = 2,
 
 	/* 1yz Positive Preliminary reply */
 	SOUP_FTP_RESTART_MARKER = 110,
@@ -109,9 +111,7 @@ GSocketConnection    *ftp_get_data			(SoupProtocolFTP       *protocol,
 
 GQuark		      soup_protocol_ftp_error_quark	(void);
 
-guint		      ftp_hash_uri			(gconstpointer key);
-
-gboolean	      ftp_hash_equal			(gconstpointer a,
+gboolean	      ftp_uri_hash_equal		(gconstpointer a,
 							 gconstpointer b);
 
 void		      ftp_reply_free			(SoupProtocolFTPReply *reply);
@@ -157,7 +157,7 @@ soup_protocol_ftp_init (SoupProtocolFTP *self)
 
 	self->priv = priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (self);
 	
-	priv->connections = g_hash_table_new_full (ftp_hash_uri, ftp_hash_equal, soup_uri_free, g_object_unref);
+	priv->connections = g_hash_table_new_full (soup_uri_host_hash, ftp_uri_hash_equal, soup_uri_free, g_object_unref);
 }
 
 SoupProtocol *
@@ -192,18 +192,12 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	 **/
 	control = g_hash_table_lookup (priv->connections, uri);
 	
-	if (control != NULL)
-	{
-		g_debug ("connected ? %u", g_socket_is_connected (g_socket_connection_get_socket (control)));
-	}
-	
 	if (control == NULL)
 	{
 		control = ftp_connection (uri, cancellable, error);
 
 		if (control == NULL)
 			return NULL;
-
 		g_hash_table_insert (priv->connections, soup_uri_copy (uri), control);
 	}
 
@@ -212,7 +206,11 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	 **/
 	data = ftp_get_data (protocol_ftp, control, uri, cancellable, error);
 
-	return g_io_stream_get_input_stream (G_IO_STREAM (data));
+	input_stream = g_io_stream_get_input_stream (G_IO_STREAM (data));
+	g_object_ref (input_stream);
+	g_object_set_data_full (G_OBJECT (input_stream), "socket-connection", data, g_object_unref);
+
+	return input_stream;
 }
 
 void
@@ -462,7 +460,7 @@ ftp_get_data (SoupProtocolFTP	*protocol,
 	GRegex *regex;
 	gchar **split;
 	guint16 port;
-	gchar *buffer;
+	gchar *buffer, *uri_decode;
 	/**
 	 * Detect the PASSIVE/ACTIVE MODE
 	 * By default : PASSIVE
@@ -501,7 +499,7 @@ ftp_get_data (SoupProtocolFTP	*protocol,
 		 **/
 		g_set_error_literal (error,
 				     SOUP_PROTOCOL_FTP_ERROR,
-				     1,
+				     SOUP_FTP_ACTIVE_NOT_IMPLEMENTED,
 				     "Active connection not yet implemented");
 		ftp_reply_free (reply);
 		return NULL;
@@ -544,10 +542,23 @@ ftp_get_data (SoupProtocolFTP	*protocol,
 		}
 	}
 
+	uri_decode = soup_uri_decode (uri->path);
+
+	if (uri_decode == NULL) {
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     SOUP_FTP_INVALID_PATH,
+				     "Path decode failed");
+		g_free (uri_decode);
+		return NULL;
+	}
+
 	buffer = g_strdup_printf ("RETR %s", uri->path);
 
-	if (ftp_send_command (control, buffer, cancellable, error) == FALSE)
+	if (ftp_send_command (control, buffer, cancellable, error) == FALSE) {
+		g_free (buffer);
 		return NULL;
+	}
 
 	g_free (buffer);
 
@@ -579,29 +590,21 @@ soup_protocol_ftp_error_quark (void)
 	return error;
 }
 
-guint
-ftp_hash_uri (gconstpointer key)
-{
-	return g_str_hash (((SoupURI *) key)->host);
-}
-
 gboolean
-ftp_hash_equal (gconstpointer a,
-		gconstpointer b)
+ftp_uri_hash_equal (gconstpointer a,
+		    gconstpointer b)
 {
-	SoupURI *uri_a, *uri_b;
+	const SoupURI *uri_a, *uri_b;
 
 	uri_a = (SoupURI *) a;
 	uri_b = (SoupURI *) b;
 
-	if (!g_strcmp0 (uri_a->scheme, uri_b->scheme) &&
-	    !g_strcmp0 (uri_a->user, uri_b->user) &&
-	    !g_strcmp0 (uri_a->password, uri_b->password) &&
-	    !g_strcmp0 (uri_a->host, uri_b->host) &&
-	    uri_a->port == uri_b->port)
-		return TRUE;
+	if (!soup_uri_host_equal (uri_a, uri_b) ||
+	    g_strcmp0 (uri_a->user, uri_b->user) ||
+	    g_strcmp0 (uri_a->password, uri_b->password))
+	    return FALSE;
 
-	return FALSE;
+	return TRUE;
 }
 
 void

@@ -9,7 +9,7 @@ int
 main (int argc, char **argv)
 {
 	SoupURILoader *loader;
-	SoupURI *uri;
+	SoupURI *uri1, *uri2;
 	GError *error = NULL;
 	GInputStream *input;
 	GDataInputStream *data;
@@ -21,13 +21,15 @@ main (int argc, char **argv)
 	/**
 	 * Construct SoupURI
 	 **/
-	uri = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/about/index.html");
-
+	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome.msg");
+	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome2.msg");
 	/**
 	 * Construct SoupURILoader
 	 **/
 	loader = soup_uri_loader_new ();
-	input = soup_uri_loader_load_uri (loader, uri, NULL, &error);
+	input = soup_uri_loader_load_uri (loader, uri1, NULL, &error);
+	g_object_unref (input);
+	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
 	
 	/**
 	 * SoupURILoader failed
@@ -44,10 +46,13 @@ main (int argc, char **argv)
 	 * Try to read GInputStream content
 	 **/
 	data = g_data_input_stream_new (input);
+
 	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 
-	g_debug ("buffer_length  = %u", len);
-	g_debug ("buffer_content = %s", buffer);
+	while (buffer != NULL) {
+		g_debug ("<--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
 
 	return 0;
 }
