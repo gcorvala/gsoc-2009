@@ -10,11 +10,28 @@ struct _SoupProtocolFTPPrivate
 	GHashTable *connections;
 };
 
-struct _SoupProtocolFTPReply
+typedef enum {
+	SOUP_PROTOCOL_FTP_FEATURE_MDTM = 1 << 0,
+	SOUP_PROTOCOL_FTP_FEATURE_SIZE = 1 << 1,
+	SOUP_PROTOCOL_FTP_FEATURE_REST = 1 << 2,
+	SOUP_PROTOCOL_FTP_FEATURE_TVFS = 1 << 3,
+	SOUP_PROTOCOL_FTP_FEATURE_MLST = 1 << 4,
+	SOUP_PROTOCOL_FTP_FEATURE_MLSD = 1 << 5,
+	SOUP_PROTOCOL_FTP_FEATURE_EPRT = 1 << 6,
+	SOUP_PROTOCOL_FTP_FEATURE_EPSV = 1 << 7,
+	SOUP_PROTOCOL_FTP_FEATURE_UTF8 = 1 << 8
+} SoupProtocolFTPFeature;
+
+typedef struct
 {
 	guint16		code;
 	GString        *message;
-};
+} SoupProtocolFTPReply;
+
+typedef struct
+{
+	guint16		features;
+} SoupProtocolFTPData;
 
 typedef enum {
 	SOUP_FTP_NONE,
@@ -70,7 +87,7 @@ typedef enum {
 	
 } SoupProtocolFTPReplyCode;
 
-#define SOUP_PARSE_FTP_STATUS(buffer) (buffer[0] * 100 + buffer[1] * 10 + buffer[2])
+#define SOUP_PARSE_FTP_STATUS(buffer) (g_ascii_digit_value (buffer[0]) * 100 + g_ascii_digit_value (buffer[1]) * 10 + g_ascii_digit_value (buffer[2]))
 
 G_DEFINE_TYPE (SoupProtocolFTP, soup_protocol_ftp, SOUP_TYPE_PROTOCOL);
 
@@ -157,7 +174,10 @@ soup_protocol_ftp_init (SoupProtocolFTP *self)
 
 	self->priv = priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (self);
 	
-	priv->connections = g_hash_table_new_full (soup_uri_host_hash, ftp_uri_hash_equal, soup_uri_free, g_object_unref);
+	priv->connections = g_hash_table_new_full (soup_uri_host_hash,
+						   ftp_uri_hash_equal,
+						   soup_uri_free,
+						   g_object_unref);
 }
 
 SoupProtocol *
@@ -168,6 +188,53 @@ soup_protocol_ftp_new (void)
 	self = g_object_new (SOUP_TYPE_PROTOCOL_FTP, NULL);
 
 	return SOUP_PROTOCOL (self);
+}
+
+gboolean
+ftp_determine_features (SoupProtocolFTPData *data, SoupProtocolFTP *protocol, SoupProtocolFTPReply *reply)
+{
+	gchar **split, *feature;
+	gint i, j;
+	const struct {
+		const gchar		*name;
+		SoupProtocolFTPFeature	 enable;
+	} features [] = {
+		{ "MDTM", SOUP_PROTOCOL_FTP_FEATURE_MDTM },
+		{ "SIZE", SOUP_PROTOCOL_FTP_FEATURE_SIZE },
+		{ "REST", SOUP_PROTOCOL_FTP_FEATURE_REST },
+		{ "TVFS", SOUP_PROTOCOL_FTP_FEATURE_TVFS },
+		{ "MLST", SOUP_PROTOCOL_FTP_FEATURE_MLST },
+		{ "MLSD", SOUP_PROTOCOL_FTP_FEATURE_MLSD },
+		{ "EPRT", SOUP_PROTOCOL_FTP_FEATURE_EPRT },
+		{ "EPSV", SOUP_PROTOCOL_FTP_FEATURE_EPSV },
+		{ "UTF8", SOUP_PROTOCOL_FTP_FEATURE_UTF8 },
+	};
+
+	if (reply->code != 211)
+		return FALSE;
+
+	split = g_strsplit (reply->message->str, "\n", 0);
+
+	for (i = 1; split[i + 1]; ++i)
+	{
+		if (!g_ascii_isspace (split[i][0])) {
+			data->features = 0;
+			g_strfreev (split);
+			return FALSE;
+		}
+		feature = g_strstrip (split[i]);
+
+		for (j = 0; j < G_N_ELEMENTS (features); ++j)
+		{
+			if (g_ascii_strncasecmp (feature, features[j].name, 4) == 0) {
+				g_debug ("[FEAT] %s supported", features[j].name);
+				data->features |= features[j].enable;
+			}
+		}
+	}
+
+	g_strfreev (split);
+	return TRUE;
 }
 
 GInputStream *
@@ -181,6 +248,8 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	GInputStream *input_stream;
 	GSocketConnection *control;
 	GSocketConnection *data;
+	SoupProtocolFTPData *ftp_data;
+	SoupProtocolFTPReply *reply;
 
 	g_debug ("soup_protocol_ftp_load_uri called");
 	
@@ -200,6 +269,14 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			return NULL;
 		g_hash_table_insert (priv->connections, soup_uri_copy (uri), control);
 	}
+
+	/**
+	 * test FEATURES
+	 **/
+	ftp_data = g_malloc0 (sizeof (SoupProtocolFTPData));
+	ftp_send_command (control, "FEAT", NULL, NULL);
+	reply = ftp_receive_reply (control, NULL, NULL);
+	ftp_determine_features (ftp_data, NULL, reply);
 
 	/**
 	 * Get the data input stream containing the file
@@ -319,7 +396,7 @@ ftp_receive_reply (GSocketConnection *conn,
 		buffer = g_data_input_stream_read_line (input, &len, cancellable, error);
 
 		if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code &&
-		    buffer[3] == ' ')
+		    g_ascii_isspace (buffer[3]))
 			multi_line = FALSE;
 		else
 			g_string_append (reply->message, buffer);

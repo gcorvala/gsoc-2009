@@ -91,3 +91,35 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	
 	return input_stream;
 }
+
+void
+soup_uri_loader_load_uri_async (SoupURILoader		*loader,
+				SoupURI			*uri,
+				GCancellable		*cancellable,
+				GAsyncReadyCallback	 callback,
+				gpointer		 user_data)
+{
+	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+	SoupProtocol *protocol;
+
+	if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+		g_debug ("http");
+
+	else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
+		g_debug ("https");
+
+	else if (uri->scheme == SOUP_URI_SCHEME_FTP)
+	{
+		g_debug ("ftp protocol detected!");
+		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
+		if (protocol == NULL)
+		{
+			protocol = soup_protocol_ftp_new ();
+			g_hash_table_insert (priv->protocols, uri->scheme, protocol);
+		}
+	}
+	else
+		g_debug ("error");
+
+	soup_protocol_load_uri_async (protocol, uri, cancellable, callback, user_data);
+}

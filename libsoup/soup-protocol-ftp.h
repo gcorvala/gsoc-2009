@@ -17,7 +17,6 @@ G_BEGIN_DECLS
 typedef struct _SoupProtocolFTP SoupProtocolFTP;
 typedef struct _SoupProtocolFTPClass SoupProtocolFTPClass;
 typedef struct _SoupProtocolFTPPrivate SoupProtocolFTPPrivate;
-typedef struct _SoupProtocolFTPReply SoupProtocolFTPReply;
 
 struct _SoupProtocolFTP {
 	SoupProtocol parent;

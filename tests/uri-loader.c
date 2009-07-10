@@ -9,7 +9,7 @@ int
 main (int argc, char **argv)
 {
 	SoupURILoader *loader;
-	SoupURI *uri1, *uri2;
+	SoupURI *uri1, *uri2, *uri3;
 	GError *error = NULL;
 	GInputStream *input;
 	GDataInputStream *data;
@@ -17,19 +17,19 @@ main (int argc, char **argv)
 	gsize len;
 
 	g_type_init ();
+	g_thread_init (NULL);
 
 	/**
 	 * Construct SoupURI
 	 **/
-	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome.msg");
-	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome2.msg");
+	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org:21/welcome.msg");
+	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome.msg");
+	uri3 = soup_uri_new ("ftp://anonymous:ab@ftp.gnome.org:21/welcome2.msg");
 	/**
 	 * Construct SoupURILoader
 	 **/
 	loader = soup_uri_loader_new ();
 	input = soup_uri_loader_load_uri (loader, uri1, NULL, &error);
-	g_object_unref (input);
-	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
 	
 	/**
 	 * SoupURILoader failed
