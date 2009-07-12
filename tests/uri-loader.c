@@ -54,5 +54,19 @@ main (int argc, char **argv)
 		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 	}
 
+	/**
+	 * test async
+	 **/
+
+	GMainLoop *loop = g_main_loop_new (NULL, TRUE);
+
+	soup_uri_loader_load_uri_async (loader,
+					uri2,
+					NULL,
+					NULL,
+					NULL);
+
+	g_main_loop_run (loop);
+
 	return 0;
 }
