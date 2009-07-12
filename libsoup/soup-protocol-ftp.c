@@ -26,6 +26,7 @@ typedef struct
 {
 	guint16		code;
 	GString        *message;
+	gboolean	multi_line;
 } SoupProtocolFTPReply;
 
 typedef struct
@@ -36,14 +37,16 @@ typedef struct
 	GDataInputStream	*control_input;
 	GOutputStream		*control_output;
 
-	/* main async call*/
+	/* main async call (load_uri_async) */
 	GAsyncReadyCallback	 async_callback;
 	gpointer		 async_user_data;
 	/* internal async call vars*/
+	GCancellable		*_async_cancellable;
 	GAsyncReadyCallback	 _async_callback;
 	gpointer		 _async_user_data;
+	SoupProtocolFTPReply	*_async_reply;
 	gssize			 _async_bytes_to_write;
-	GError			*error;
+	GError			*_async_error;
 } SoupProtocolFTPContext;
 
 typedef enum {
@@ -127,7 +130,10 @@ void		      ftp_receive_reply_async		(SoupProtocolFTPContext	 *context,
 							 GCancellable		 *cancellable,
 							 GAsyncReadyCallback	  callback,
 							 gpointer		  user_data);
-SoupProtocolFTPReply *ftp_receive_reply_async_finish	(SoupProtocolFTPContext	 *context,
+void		      ftp_receive_reply_multi_async	(GObject *source_object,
+							 GAsyncResult *res,
+							 gpointer user_data);
+SoupProtocolFTPReply *ftp_receive_reply_finish		(SoupProtocolFTPContext	 *context,
 							 GAsyncResult		 *result,
 							 GError			**error);
 
@@ -159,7 +165,9 @@ GSocketConnection    *ftp_get_data			(SoupProtocolFTPContext	 *context,
 							 SoupURI	       *uri,
 							 GCancellable	       *cancellable,
 							 GError		      **error);
-
+/* parsing methods */
+gboolean	      ftp_parse_feat_reply		(SoupProtocolFTPContext *data,
+							 SoupProtocolFTPReply *reply);
 /* async callbacks */
 void		      ftp_callback_conn			(GObject *source_object,
 							 GAsyncResult *res,
@@ -398,7 +406,7 @@ ftp_receive_reply (SoupProtocolFTPContext *context,
 		   GError	     **error)
 {
 	SoupProtocolFTPReply *reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
-	char *buffer;
+	gchar *buffer;
 	gsize len;
 	gboolean multi_line = FALSE;
 
@@ -434,34 +442,111 @@ ftp_receive_reply (SoupProtocolFTPContext *context,
 		if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code &&
 		    g_ascii_isspace (buffer[3]))
 			multi_line = FALSE;
-		else {
+		else
 			g_string_append (reply->message, buffer);
-			//g_strlcat (reply->message_, buffer, strlen (reply->message_) + strlen (buffer));
-		}
 	}
 	
 	g_free (buffer);
 	
-	g_debug ("<--- [%u] %s", reply->code, reply->message->str);
+	g_debug (" [sync] <--- [%u] %s", reply->code, reply->message->str);
 
 	return reply;
 }
 
 void
-ftp_receive_reply_async (SoupProtocolFTPContext   *context,
-			 GCancellable	       *cancellable,
-			 GAsyncReadyCallback	callback,
-			 gpointer		user_data)
+ftp_receive_reply_async (SoupProtocolFTPContext	*context,
+			 GCancellable		*cancellable,
+			 GAsyncReadyCallback	 callback,
+			 gpointer		 user_data)
 {
+	context->_async_cancellable = cancellable;
+	context->_async_callback = callback;
+	context->_async_user_data = user_data;
+	if (context->_async_reply != NULL) {
+		ftp_reply_free (context->_async_reply);
+		context->_async_reply = NULL;
+	}
+	g_data_input_stream_read_line_async (context->control_input,
+					     G_PRIORITY_DEFAULT,
+					     context->_async_cancellable,
+					     ftp_receive_reply_multi_async,
+					     context);
+}
 
+void
+ftp_receive_reply_multi_async (GObject *source_object,
+			       GAsyncResult *result,
+			       gpointer user_data)
+{
+	SoupProtocolFTPContext	*context;
+	gsize len;
+	gchar *buffer;
+
+	context = user_data;
+	buffer = g_data_input_stream_read_line_finish (context->control_input,
+						       result,
+						       &len,
+						       &(context->_async_error));
+	if (buffer == NULL)
+		// G_OBJECT cast is ugly
+		context->_async_callback (G_OBJECT (context), result, context->_async_user_data);
+	if (context->_async_reply == NULL) {
+		/* check if [0][1][2] is a correct code */
+		if (len < 4) {
+			g_set_error_literal (&(context->_async_error),
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     SOUP_FTP_BAD_ANSWER,
+					     "Bad FTP answer (less than 4 character)");
+			g_free (buffer);
+			// G_OBJECT cast is ugly
+			context->_async_callback (G_OBJECT (context), result, context->_async_user_data);
+		}
+		context->_async_reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
+		context->_async_reply->message = g_string_new (NULL);
+		context->_async_reply->code = 100 * g_ascii_digit_value (buffer[0])
+					    + 10 * g_ascii_digit_value (buffer[1])
+					    + g_ascii_digit_value (buffer[2]);
+		g_string_append (context->_async_reply->message, buffer + 4);
+		if (buffer[3] == '-')
+			context->_async_reply->multi_line = TRUE;
+	}
+	else if (context->_async_reply->multi_line == TRUE) {
+		g_string_append_c (context->_async_reply->message, '\n');
+		if (SOUP_PARSE_FTP_STATUS (buffer) == context->_async_reply->code &&
+		    g_ascii_isspace (buffer[3])) {
+			context->_async_reply->multi_line = FALSE;
+		}
+		else
+			g_string_append (context->_async_reply->message, buffer);
+	}
+	if (context->_async_reply->multi_line == TRUE)
+		g_data_input_stream_read_line_async (context->control_input,
+						     G_PRIORITY_DEFAULT,
+						     context->_async_cancellable,
+						     ftp_receive_reply_multi_async,
+						     context);
+	else {
+		g_free (buffer);
+		g_debug ("[async] <--- [%u] %s", context->_async_reply->code, context->_async_reply->message->str);
+		// G_OBJECT cast is ugly
+		context->_async_callback (G_OBJECT (context), result, context->_async_user_data);
+	}
 }
 
 SoupProtocolFTPReply *
-ftp_receive_reply_async_finish (SoupProtocolFTPContext   *context,
+ftp_receive_reply_finish (SoupProtocolFTPContext   *context,
 				GAsyncResult	      *result,
 				GError		     **error)
 {
+	SoupProtocolFTPReply *reply;
 
+	reply = context->_async_reply;
+	context->_async_cancellable = NULL;
+	context->_async_callback = NULL;
+	context->_async_user_data = NULL;
+	context->_async_reply = NULL;
+
+	return reply;
 }
 
 gboolean
@@ -486,7 +571,7 @@ ftp_send_command (SoupProtocolFTPContext *context,
 
 	g_free (request);
 
-	g_debug ("---> %s [sync]", str);
+	g_debug (" [sync] ---> %s", str);
 
 	return success;
 }
@@ -500,11 +585,11 @@ ftp_send_command_async (SoupProtocolFTPContext	*context,
 {
 	gchar *request;
 
-	g_debug ("---> %s [async]", str);
+	g_debug ("[async] ---> %s", str);
 
+	request = g_strconcat (str, "\r\n", NULL);
 	context->_async_callback = callback;
 	context->_async_user_data = user_data;
-	request = g_strconcat (str, "\r\n", NULL);
 	context->_async_bytes_to_write = strlen (request);
 	g_output_stream_write_async (G_OUTPUT_STREAM (context->control_output),
 				     request,
@@ -521,9 +606,13 @@ ftp_send_command_finish (SoupProtocolFTPContext	 *context,
 			 GAsyncResult		 *result,
 			 GError			**error)
 {
-	return g_output_stream_write_finish (G_OUTPUT_STREAM (context->control_output),
+	gboolean success = g_output_stream_write_finish (G_OUTPUT_STREAM (context->control_output),
 					     result,
 					     error) == context->_async_bytes_to_write;
+	context->_async_callback = NULL;
+	context->_async_user_data = NULL;
+	context->_async_bytes_to_write = 0;
+	return success;
 }
 
 void
@@ -533,7 +622,8 @@ ftp_async_wrapper (GObject		 *source_object,
 {
 	SoupProtocolFTPContext *context = user_data;
 
-	context->_async_callback (context, result, context->_async_user_data);
+	// G_OBJECT cast is ugly
+	context->_async_callback (G_OBJECT (context), result, context->_async_user_data);
 }
 
 GSocketConnection *
@@ -831,16 +921,6 @@ ftp_context_free (SoupProtocolFTPContext *data)
 
 /* async callbacks */
 void
-brol (GObject *source_object,
-	     GAsyncResult *res,
-	     gpointer user_data)
-{
-	SoupProtocolFTPContext *context = source_object;
-	g_debug ("brol called");
-	g_debug ("->%u<-",ftp_send_command_finish (context, res, NULL));
-}
-
-void
 ftp_callback_conn (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
@@ -851,12 +931,10 @@ ftp_callback_conn (GObject *source_object,
 
 	context->control = g_socket_client_connect_to_host_finish (g_socket_client_new (),
 								    res,
-								    &(context->error));
+								    &(context->_async_error));
 	if (context->control == NULL)
 		return;
 	context->control_input = g_data_input_stream_new (g_io_stream_get_input_stream (G_IO_STREAM (context->control)));
 	g_data_input_stream_set_newline_type (context->control_input, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
 	context->control_output = g_io_stream_get_output_stream (G_IO_STREAM (context->control));
-
-	ftp_send_command_async (context, "PASV", NULL, brol, NULL);
 }
