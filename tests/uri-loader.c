@@ -5,6 +5,14 @@
 #include <glib.h>
 #include <gio/gio.h>
 
+void
+callback (GObject *source,
+	  GAsyncResult *res,
+	  gpointer user_data)
+{
+	g_debug ("callback called");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -22,9 +30,9 @@ main (int argc, char **argv)
 	/**
 	 * Construct SoupURI
 	 **/
-	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org:21/welcome.msg");
-	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org:21/welcome.msg");
-	uri3 = soup_uri_new ("ftp://anonymous:ab@ftp.gnome.org:21/welcome2.msg");
+	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/welcome.msg");
+	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome.msg");
+	uri3 = soup_uri_new ("ftp://anonymous:ab@ftp.gnome.org/welcome2.msg");
 	/**
 	 * Construct SoupURILoader
 	 **/
@@ -63,7 +71,7 @@ main (int argc, char **argv)
 	soup_uri_loader_load_uri_async (loader,
 					uri2,
 					NULL,
-					NULL,
+					callback,
 					NULL);
 
 	g_main_loop_run (loop);
