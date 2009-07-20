@@ -10,7 +10,24 @@ callback (GObject *source,
 	  GAsyncResult *res,
 	  gpointer user_data)
 {
-	g_debug ("callback called");
+	GInputStream *input;
+	GDataInputStream *data;
+	gchar *buffer;
+	gsize len;
+
+	g_debug ("user callback called");
+
+	input = soup_protocol_ftp_load_uri_finish (source, res, NULL);
+
+	data = g_data_input_stream_new (input);
+
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+
+	while (buffer != NULL) {
+		g_debug ("[async] <--- %s", buffer);
+		g_free (buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
 }
 
 int
@@ -58,7 +75,7 @@ main (int argc, char **argv)
 	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 
 	while (buffer != NULL) {
-		g_debug ("<--- %s", buffer);
+		g_debug ("[sync] <--- %s", buffer);
 		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 	}
 
