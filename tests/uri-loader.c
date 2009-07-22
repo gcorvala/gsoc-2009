@@ -19,14 +19,20 @@ callback (GObject *source,
 
 	input = soup_protocol_ftp_load_uri_finish (source, res, NULL);
 
-	data = g_data_input_stream_new (input);
+	if (input) {
+		data = g_data_input_stream_new (input);
 
-	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-
-	while (buffer != NULL) {
-		g_debug ("[async] <--- %s", buffer);
-		g_free (buffer);
 		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+
+		while (buffer != NULL) {
+			g_debug ("[async] <--- %s", buffer);
+			g_free (buffer);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		}
+		g_object_unref (data);
+	}
+	else {
+		g_debug ("error detected");
 	}
 }
 
@@ -47,14 +53,14 @@ main (int argc, char **argv)
 	/**
 	 * Construct SoupURI
 	 **/
-	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/welcome.msg");
+	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/pub/linux/kernel/v2.6/ChangeLog-2.6.30");
 	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome.msg");
-	uri3 = soup_uri_new ("ftp://anonymous:ab@ftp.gnome.org/welcome2.msg");
+	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome2.msg");
 	/**
 	 * Construct SoupURILoader
 	 **/
 	loader = soup_uri_loader_new ();
-	input = soup_uri_loader_load_uri (loader, uri1, NULL, &error);
+	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
 	
 	/**
 	 * SoupURILoader failed
@@ -79,6 +85,8 @@ main (int argc, char **argv)
 		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 	}
 
+	g_object_unref (data);
+
 	/**
 	 * test async
 	 **/
@@ -86,7 +94,7 @@ main (int argc, char **argv)
 	GMainLoop *loop = g_main_loop_new (NULL, TRUE);
 
 	soup_uri_loader_load_uri_async (loader,
-					uri2,
+					uri3,
 					NULL,
 					callback,
 					NULL);
