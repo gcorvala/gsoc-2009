@@ -93,6 +93,32 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 }
 
 void
+load_uri_cb (GObject *source_object,
+	     GAsyncResult *res,
+	     gpointer user_data)
+{
+	SoupProtocol *protocol = source_object;
+	GSimpleAsyncResult *result = user_data;
+	GInputStream *input_stream;
+	GError *error = NULL;
+
+	g_debug ("soup_uri_loader_load_uri_cb called");
+
+	input_stream = soup_protocol_load_uri_finish (protocol, res, error);
+	if (input_stream) {
+		g_simple_async_result_set_op_res_gpointer (result,
+							   input_stream,
+							   g_object_unref);
+	}
+	else {
+		g_simple_async_result_set_from_error (result, error);
+		g_error_free (error);
+	}
+	g_simple_async_result_complete (result);
+	g_object_unref (result);
+}
+
+void
 soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 				SoupURI			*uri,
 				GCancellable		*cancellable,
@@ -119,5 +145,27 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 			g_debug ("error");
 		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
 	}
-	soup_protocol_load_uri_async (protocol, uri, cancellable, callback, user_data);
+	soup_protocol_load_uri_async (protocol, uri, cancellable, load_uri_cb, result);
+}
+
+GInputStream *
+soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
+				 GAsyncResult	 *result,
+				 GError		**error)
+{
+	GInputStream *input_stream;
+	GSimpleAsyncResult *simple;
+
+	g_debug ("soup_uri_loader_load_uri_finish finish");
+
+	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
+	g_return_if_fail (G_IS_ASYNC_RESULT (result));
+	g_return_if_fail (g_simple_async_result_is_valid (result, G_OBJECT (loader), soup_uri_loader_load_uri_async));
+
+	simple = G_SIMPLE_ASYNC_RESULT (result);
+	if (g_simple_async_result_propagate_error (simple, error))
+		return NULL;
+	input_stream = g_simple_async_result_get_op_res_gpointer (simple);
+
+	return input_stream;
 }

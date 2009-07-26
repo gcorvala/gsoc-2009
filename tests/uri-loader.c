@@ -14,10 +14,11 @@ callback (GObject *source,
 	GDataInputStream *data;
 	gchar *buffer;
 	gsize len;
+	GError *error = NULL;
 
 	g_debug ("user callback called");
 
-	input = soup_protocol_ftp_load_uri_finish (source, res, NULL);
+	input = soup_uri_loader_load_uri_finish (source, res, &error);
 
 	if (input) {
 		data = g_data_input_stream_new (input);
@@ -32,7 +33,7 @@ callback (GObject *source,
 		g_object_unref (data);
 	}
 	else {
-		g_debug ("error detected");
+		g_debug ("error detected : [%u] %s", error->code, error->message);
 	}
 }
 

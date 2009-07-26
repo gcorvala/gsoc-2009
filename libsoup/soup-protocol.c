@@ -23,18 +23,18 @@ soup_protocol_load_uri (SoupProtocol		*protocol,
 			GError		       **error)
 {
 	GInputStream *input_stream;
-	
+
 	g_debug ("soup_protocol_load_uri called");
-	
+
 	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
-	
 	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL);
-	
+	g_return_if_fail (uri != NULL);
+
 	input_stream = SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri (protocol,
 								     uri,
 								     cancellable,
 								     error);
-	
+
 	return input_stream;
 }
 
@@ -46,11 +46,11 @@ soup_protocol_load_uri_async (SoupProtocol		*protocol,
 			      gpointer			 user_data)
 {
 	g_debug ("soup_protocol_load_uri_async called");
-	
+
 	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
-	
 	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_async != NULL);
-	
+	g_return_if_fail (uri != NULL);
+
 	SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_async (protocol,
 							    uri,
 							    cancellable,
@@ -64,16 +64,15 @@ soup_protocol_load_uri_finish (SoupProtocol	 *protocol,
 			       GError		**error)
 {
 	GInputStream *input_stream;
-	
+
 	g_debug ("soup_protocol_load_uri_finish called");
-	
+
 	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
-	
 	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish != NULL);
-	
+
 	input_stream = SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish (protocol,
 									    result,
 									    error);
-	
+
 	return input_stream;
 }
