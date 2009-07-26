@@ -69,6 +69,7 @@ soup_protocol_load_uri_finish (SoupProtocol	 *protocol,
 
 	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
 	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish != NULL);
+	g_return_if_fail (G_IS_ASYNC_RESULT (result));
 
 	input_stream = SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish (protocol,
 									    result,

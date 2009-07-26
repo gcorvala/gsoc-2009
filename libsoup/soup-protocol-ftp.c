@@ -60,6 +60,8 @@ typedef enum {
 	SOUP_FTP_BAD_ANSWER = 0,
 	SOUP_FTP_INVALID_PATH = 1,
 	SOUP_FTP_ACTIVE_NOT_IMPLEMENTED = 2,
+	SOUP_FTP_ERROR = 3,
+	SOUP_FTP_LOGIN_ERROR = 4,
 
 	/* 1yz Positive Preliminary reply */
 	SOUP_FTP_RESTART_MARKER = 110,
@@ -107,9 +109,21 @@ typedef enum {
 	SOUP_FTP_BAD_FILE_NAME = 553
 } SoupProtocolFTPReplyCode;
 
-#define SOUP_PARSE_FTP_STATUS(buffer) (g_ascii_digit_value (buffer[0]) * 100 \
-				      + g_ascii_digit_value (buffer[1]) * 10 \
-				      + g_ascii_digit_value (buffer[2]))
+#define SOUP_PARSE_FTP_STATUS(buffer)		(g_ascii_digit_value (buffer[0]) * 100 \
+						+ g_ascii_digit_value (buffer[1]) * 10 \
+						+ g_ascii_digit_value (buffer[2]))
+#define REPLY_IS_POSITIVE_PRELIMINARY(reply)	(reply->code / 100 == 1 ? TRUE : FALSE)
+#define REPLY_IS_POSITIVE_COMPLETION(reply)	(reply->code / 100 == 2 ? TRUE : FALSE)
+#define REPLY_IS_POSITIVE_INTERMEDIATE(reply)	(reply->code / 100 == 3 ? TRUE : FALSE)
+#define REPLY_IS_NEGATIVE_TRANSIENT(reply)	(reply->code / 100 == 4 ? TRUE : FALSE)
+#define REPLY_IS_NEGATIVE_PERMANENT(reply)	(reply->code / 100 == 5 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_SYNTAX(reply)		((reply->code % 100) / 10 == 0 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_INFORMATION(reply)	((reply->code % 100) / 10 == 1 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_CONNECTION(reply)	((reply->code % 100) / 10 == 2 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_AUTHENTICATION(reply)	((reply->code % 100) / 10 == 3 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_UNSPECIFIED(reply)	((reply->code % 100) / 10 == 4 ? TRUE : FALSE)
+#define REPLY_IS_ABOUT_FILE_SYSTEM(reply)	((reply->code % 100) / 10 == 5 ? TRUE : FALSE)
+
 
 G_DEFINE_TYPE (SoupProtocolFTP, soup_protocol_ftp, SOUP_TYPE_PROTOCOL);
 
@@ -269,8 +283,8 @@ soup_protocol_ftp_init (SoupProtocolFTP *self)
 	
 	priv->connections = g_hash_table_new_full (soup_uri_host_hash,
 						   ftp_uri_hash_equal,
-						   soup_uri_free,
-						   ftp_context_free);
+						   (GDestroyNotify) soup_uri_free,
+						   (GDestroyNotify) ftp_context_free);
 }
 
 SoupProtocol *
@@ -352,6 +366,78 @@ ftp_parse_pasv_reply (SoupProtocolFTPContext *data,
 	return conn;
 }
 
+gboolean
+ftp_check_reply (SoupProtocolFTPContext  *context,
+		 SoupProtocolFTPReply	 *reply,
+		 GError			**error)
+{
+	if (REPLY_IS_POSITIVE_PRELIMINARY (reply) ||
+	    REPLY_IS_POSITIVE_COMPLETION (reply) ||
+	    REPLY_IS_POSITIVE_INTERMEDIATE (reply))
+		return TRUE;
+	else if (REPLY_IS_NEGATIVE_TRANSIENT (reply)) {
+		if (REPLY_IS_ABOUT_CONNECTION (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Connection : try again later");
+		}
+		else if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "File system : try again later");
+		}
+		else {
+			g_set_error (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Unknow : try again later (%u - %s)",
+				     reply->code,
+				     reply->message->str);
+		}
+		return FALSE;
+	}
+	else if (REPLY_IS_NEGATIVE_PERMANENT (reply)) {
+		if (REPLY_IS_ABOUT_SYNTAX (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Syntax : command failed");
+		}
+		if (REPLY_IS_ABOUT_AUTHENTICATION (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Authentication : login failed (incorrect username or password)");
+		}
+		if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "File system : file action failed (invalid path or no access allowed)");
+		}
+		else {
+			g_set_error (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Unknow : ftp fatal error (%u - %s)",
+				     reply->code,
+				     reply->message->str);
+		}
+		return FALSE;
+	}
+	else {
+		g_set_error (error,
+			     SOUP_PROTOCOL_FTP_ERROR,
+			     0,
+			     "Unknow : error detected (%u - %s)",
+			     reply->code,
+			     reply->message->str);
+		return FALSE;
+	}
+}
+
 GInputStream *
 soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    SoupURI			*uri,
@@ -360,15 +446,15 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 {
 	SoupProtocolFTP *protocol_ftp;
 	SoupProtocolFTPPrivate *priv;
-	GInputStream *input_stream;
-	GSocketConnection *data;
 	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
+	GInputStream *input_stream;
 	GSocketConnectable *conn;
 	gchar *msg, *uri_decode;
 
 	g_debug ("soup_protocol_ftp_load_uri called");
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
+	g_return_val_if_fail (uri != NULL, NULL);
 
 	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
@@ -398,31 +484,29 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		context->control_output = g_io_stream_get_output_stream (G_IO_STREAM (context->control));
 	reply = ftp_receive_reply (protocol_ftp, context, context->async_cancellable, error);
 	if (reply) {
-		switch (reply->code) {
-			case 120:
-				ftp_reply_free (reply);
+		if (ftp_check_reply (context, reply, error)) {
+			if (REPLY_IS_POSITIVE_PRELIMINARY (reply)) {
 				g_set_error (error,
 					     SOUP_PROTOCOL_FTP_ERROR,
 					     SOUP_FTP_SERVICE_UNAVAILABLE,
 					     "Service unavailable");
 				g_hash_table_remove (priv->connections, context->uri);
+				ftp_reply_free (reply);
 				return NULL;
-			case 220:
+			}
+			else {
 				ftp_reply_free (reply);
 				msg = g_strdup_printf ("USER %s", context->uri->user);
-				reply = ftp_send_and_recv (protocol,
+				reply = ftp_send_and_recv (protocol_ftp,
 							   context,
 							   msg,
 							   context->async_cancellable,
 							   error);
 				g_free (msg);
-				break;
-			case 421:
-				g_debug ("welcome failed > error");
-				break;
-			default:
-				g_debug ("welcome receive unknow answer > error");
+			}
 		}
+		else
+			return NULL;
 	}
 	if (reply) {
 		switch (reply->code) {
@@ -431,7 +515,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			case 331:
 				ftp_reply_free (reply);
 				msg = g_strdup_printf ("PASS %s", context->uri->password);
-				reply = ftp_send_and_recv (protocol,
+				reply = ftp_send_and_recv (protocol_ftp,
 							   context,
 							   msg,
 							   context->async_cancellable,
@@ -453,7 +537,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			//case 202:
 			case 230:
 				ftp_reply_free (reply);
-				reply = ftp_send_and_recv (protocol,
+				reply = ftp_send_and_recv (protocol_ftp,
 							   context,
 							   "FEAT",
 							   context->async_cancellable,
@@ -476,7 +560,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			case 211:
 				ftp_parse_feat_reply (context, reply);
 				ftp_reply_free (reply);
-				reply = ftp_send_and_recv (protocol,
+				reply = ftp_send_and_recv (protocol_ftp,
 							   context,
 							   "PASV",
 							   context->async_cancellable,
@@ -500,7 +584,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		uri_decode = soup_uri_decode (context->uri->path);
 		if (uri_decode) {
 			msg = g_strdup_printf ("RETR %s", uri_decode);
-			reply = ftp_send_and_recv (protocol,
+			reply = ftp_send_and_recv (protocol_ftp,
 						   context,
 						   msg,
 						   context->async_cancellable,
@@ -585,7 +669,7 @@ soup_protocol_ftp_load_uri_async (SoupProtocol		*protocol,
 								   callback,
 								   user_data,
 								   soup_protocol_ftp_load_uri_async);
-		g_simple_async_result_set_op_res_gpointer (context->async_result, context, ftp_context_free);
+		g_simple_async_result_set_op_res_gpointer (context->async_result, context, (GDestroyNotify) ftp_context_free);
 		ftp_send_and_recv_async (protocol_ftp, context, "PASV", context->async_cancellable, ftp_callback_pasv);
 	}
 	else {
@@ -598,7 +682,7 @@ soup_protocol_ftp_load_uri_async (SoupProtocol		*protocol,
 								   callback,
 								   user_data,
 								   soup_protocol_ftp_load_uri_async);
-		g_simple_async_result_set_op_res_gpointer (context->async_result, context, ftp_context_free);
+		g_simple_async_result_set_op_res_gpointer (context->async_result, context, (GDestroyNotify) ftp_context_free);
 		g_socket_client_connect_to_host_async (g_socket_client_new (),
 						       context->uri->host,
 						       context->uri->port,
@@ -691,7 +775,7 @@ ftp_receive_reply_async (SoupProtocolFTP			 *protocol,
 							    ftp_receive_reply_async);
 	g_simple_async_result_set_op_res_gpointer (context->_async_result,
 						   reply,
-						   ftp_reply_free);
+						   (GDestroyNotify) ftp_reply_free);
 	g_data_input_stream_read_line_async (context->control_input,
 					     G_PRIORITY_DEFAULT,
 					     cancellable,
@@ -859,7 +943,6 @@ ftp_send_command_callback (GObject		 *source_object,
 	SoupProtocolFTPContext *context = user_data;
 	GError *error = NULL;
 	gboolean success;
-	gssize size;
 	gssize bytes_to_write, bytes_written;
 
 	bytes_to_write = g_simple_async_result_get_op_res_gssize (context->_async_result);
@@ -867,14 +950,14 @@ ftp_send_command_callback (GObject		 *source_object,
 						      result,
 						      &error);
 	success = (bytes_to_write == bytes_written);
-	g_simple_async_result_set_op_res_gboolean (G_SIMPLE_ASYNC_RESULT (context->_async_result), success);
-	if (size == -1) {
+	if (bytes_written == -1) {
 		g_simple_async_result_set_from_error (context->_async_result,
 						      error);
 		g_simple_async_result_complete (context->_async_result);
 		g_error_free (error);
 	}
 	else {
+		g_simple_async_result_set_op_res_gboolean (G_SIMPLE_ASYNC_RESULT (context->_async_result), success);
 		g_simple_async_result_complete (context->_async_result);
 	}
 }
@@ -934,12 +1017,18 @@ ftp_send_and_recv_async_cb (GObject		*source_object,
 			    GAsyncResult	*res,
 			    gpointer		 user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPContext *context;
 	GSimpleAsyncResult *result;
 	GError *error = NULL;
 	gboolean success;
 
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
+
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	context = user_data;
 	success = ftp_send_command_finish (protocol, context, res, &error);
 	if (success) {
 		ftp_receive_reply_async (context->protocol,
@@ -1028,13 +1117,19 @@ ftp_callback_conn (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTPContext *context = user_data;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (context->protocol);
+	SoupProtocolFTPContext *context;
+	SoupProtocolFTPPrivate *priv;
+	GSocketClient *client;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_conn called");
+	g_warn_if_fail (G_IS_SOCKET_CLIENT (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
-	context->control = g_socket_client_connect_to_host_finish (g_socket_client_new (),
+	client = G_SOCKET_CLIENT (source_object);
+	context = user_data;
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (context->protocol);
+	context->control = g_socket_client_connect_to_host_finish (client,
 								   res,
 								   &error);
 	if (context->control) {
@@ -1050,8 +1145,8 @@ ftp_callback_conn (GObject *source_object,
 		g_simple_async_result_set_from_error (context->async_result,
 						      error);
 		g_simple_async_result_complete (context->async_result);
-		g_error_free (error);
 		g_hash_table_remove (priv->connections, context->uri);
+		g_error_free (error);
 	}
 }
 
@@ -1060,22 +1155,35 @@ ftp_callback_welcome (GObject *source_object,
 		      GAsyncResult *res,
 		      gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 	gchar *msg;
 
-	//g_debug ("ftp_callback_welcome called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 	reply = ftp_receive_reply_finish (protocol,
 					  context,
 					  res,
 					  &error);
 	if (reply) {
-		switch (reply->code) {
-			case 220:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_PRELIMINARY (reply)) {
+				g_simple_async_result_set_error (context->async_result,
+								 SOUP_PROTOCOL_FTP_ERROR,
+								 SOUP_FTP_SERVICE_UNAVAILABLE,
+								 "Service unavailable");
+				g_simple_async_result_complete (context->async_result);
+				g_hash_table_remove (priv->connections, context->uri);
+			}
+			else {
 				msg = g_strdup_printf ("USER %s", context->uri->user);
 				ftp_send_and_recv_async (protocol,
 							 context,
@@ -1083,18 +1191,14 @@ ftp_callback_welcome (GObject *source_object,
 							 context->async_cancellable,
 							 ftp_callback_user);
 				g_free (msg);
-				break;
-			case 120:
-			case 421:
-				g_simple_async_result_set_error (context->async_result,
-								 SOUP_PROTOCOL_FTP_ERROR,
-								 SOUP_FTP_SERVICE_UNAVAILABLE,
-								 "Service unavailable");
-				g_simple_async_result_complete (context->async_result);
-				g_hash_table_remove (priv->connections, context->uri);
-				break;
-			default:
-				g_debug ("welcome receive unknow answer > error");
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1112,21 +1216,31 @@ ftp_callback_user (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 	gchar *msg;
 
-	//g_debug ("ftp_callback_user called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 	reply = ftp_send_and_recv_finish (protocol, context, res, &error);
 	if (reply) {
-		switch (reply->code) {
-			//case 230:
-				//ok send FEAT
-			case 331:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_COMPLETION (reply)) {
+				ftp_send_and_recv_async (protocol,
+							 context,
+							 "FEAT",
+							 context->async_cancellable,
+							 ftp_callback_pass);
+			}
+			if (REPLY_IS_POSITIVE_INTERMEDIATE (reply)) {
 				msg = g_strdup_printf ("PASS %s", context->uri->password);
 				ftp_send_and_recv_async (protocol,
 							 context,
@@ -1134,15 +1248,14 @@ ftp_callback_user (GObject *source_object,
 							 context->async_cancellable,
 							 ftp_callback_pass);
 				g_free (msg);
-				break;
-			//case 332:
-				//ok send ACCT
-			//case 530:
-			//case 500:
-			//case 501:
-				//error
-			//case 421:
-				//not available
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1160,35 +1273,37 @@ ftp_callback_pass (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_pass called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
+
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 
 	reply = ftp_receive_reply_finish (protocol, context, res, &error);
 	if (reply) {
-		switch (reply->code) {
-			//case 202:
-			case 230:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_COMPLETION (reply)) {
 				ftp_send_and_recv_async (protocol,
 							 context,
 							 "FEAT",
 							 context->async_cancellable,
 							 ftp_callback_feat);
-				break;
-				//ok send PASS
-			//case 332:
-				//ok send ACCT
-			//case 530:
-			//case 500:
-			//case 501:
-			//case 503:
-				//error
-			//case 421:
-				//not available
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1206,21 +1321,37 @@ ftp_callback_feat (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_feat called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 	reply = ftp_receive_reply_finish (protocol, context, res, &error);
 	if (reply) {
-		switch (reply->code) {
-			case 211:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_COMPLETION (reply)) {
 				ftp_parse_feat_reply (context, reply);
-				ftp_send_and_recv_async (protocol, context, "PASV", context->async_cancellable, ftp_callback_pasv);
-				break;
+				ftp_send_and_recv_async (protocol,
+							 context,
+							 "PASV",
+							 context->async_cancellable,
+							 ftp_callback_pasv);
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1238,26 +1369,48 @@ ftp_callback_pasv (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GSocketConnectable *conn;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_pasv called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 	reply = ftp_receive_reply_finish (protocol, context, res, &error);
 	if (reply) {
-		switch (reply->code) {
-			case 227:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_COMPLETION (reply)) {
 				conn = ftp_parse_pasv_reply (context, reply);
-				g_socket_client_connect_async (g_socket_client_new (),
-							       conn,
-							       context->async_cancellable,
-							       ftp_callback_data,
-							       context);
-				break;
+				if (conn) {
+					g_socket_client_connect_async (g_socket_client_new (),
+								       conn,
+								       context->async_cancellable,
+								       ftp_callback_data,
+								       context);
+				}
+				else {
+					g_simple_async_result_set_error (context->async_result,
+									 SOUP_PROTOCOL_FTP_ERROR,
+									 0,
+									 "Passive failed");
+					g_simple_async_result_complete (context->async_result);
+					g_hash_table_remove (priv->connections, context->uri);
+				}
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1275,14 +1428,21 @@ ftp_callback_data (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	GSocketClient *client = source_object;
-	SoupProtocolFTPContext *context = user_data;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (context->protocol);
+	GSocketClient *client;
+	SoupProtocolFTPContext *context;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
 	GError *error = NULL;
 	gchar *uri_decode, *msg;
 
-	//g_debug ("ftp_callback_data called");
+	g_warn_if_fail (G_IS_SOCKET_CLIENT (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	client = G_SOCKET_CLIENT (source_object);
+	context = user_data;
+	protocol = context->protocol;
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	context->data = g_socket_client_connect_finish (client,
 							res,
 							&error);
@@ -1290,7 +1450,7 @@ ftp_callback_data (GObject *source_object,
 		uri_decode = soup_uri_decode (context->uri->path);
 		if (uri_decode) {
 			msg = g_strdup_printf ("RETR %s", uri_decode);
-			ftp_send_and_recv_async (context->protocol, context, msg, context->async_cancellable, ftp_callback_retr);
+			ftp_send_and_recv_async (protocol, context, msg, context->async_cancellable, ftp_callback_retr);
 			g_free (uri_decode);
 			g_free (msg);
 		}
@@ -1317,35 +1477,33 @@ ftp_callback_retr (GObject *source_object,
 		   GAsyncResult *res,
 		   gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_retr called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	context = user_data;
 	reply = ftp_receive_reply_finish (protocol, context, res, &error);
 	if (reply) {
-		switch (reply->code) {
-			//case 110:
-			case 125:
-			case 150:
+		if (ftp_check_reply (context, reply, &error)) {
+			if (REPLY_IS_POSITIVE_PRELIMINARY (reply)) {
 				ftp_receive_reply_async (protocol, context, context->async_cancellable, ftp_callback_end);
 				g_simple_async_result_complete (context->async_result);
-				break;
-			//case 226:
-			//case 250:
-			//case 421:
-			//case 425:
-			//case 426:
-			//case 450:
-			//case 451:
-			//case 501:
-			//case 530:
-			//case 550:
-			default:
-				g_debug ("action not defined : %u", reply->code);
+			}
+		}
+		else {
+			g_simple_async_result_set_from_error (context->async_result,
+							      error);
+			g_simple_async_result_complete (context->async_result);
+			g_hash_table_remove (priv->connections, context->uri);
+			g_error_free (error);
 		}
 		ftp_reply_free (reply);
 	}
@@ -1364,13 +1522,17 @@ ftp_callback_end (GObject *source_object,
 		  GAsyncResult *res,
 		  gpointer user_data)
 {
-	SoupProtocolFTP *protocol = source_object;
-	SoupProtocolFTPContext *context = user_data;
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPContext *context;
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 
-	//g_debug ("ftp_callback_end called");
+	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
+	g_warn_if_fail (user_data != NULL);
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	context = user_data;
 	reply = ftp_receive_reply_finish (protocol,
 					  context,
 					  res,
