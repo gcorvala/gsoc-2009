@@ -64,29 +64,26 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 			  GCancellable	 *cancellable,
 			  GError	**error)
 {
-	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+	SoupURILoaderPrivate *priv;
 	GInputStream *input_stream;
 	SoupProtocol *protocol;
 
-	if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-		g_debug ("http");
+	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
+	g_return_if_fail (uri != NULL);
 
-	else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-		g_debug ("https");
-
-	else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-	{
-		g_debug ("ftp protocol detected!");
-		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
-		if (protocol == NULL)
-		{
+	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+	protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
+	if (!protocol) {
+		if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+			g_debug ("http");
+		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
+			g_debug ("https");
+		else if (uri->scheme == SOUP_URI_SCHEME_FTP)
 			protocol = soup_protocol_ftp_new ();
-			g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
-		}
+		else
+			g_debug ("error");
+		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
 	}
-	else
-		g_debug ("error");
-	
 	input_stream = soup_protocol_load_uri (protocol, uri, cancellable, error);
 	
 	return input_stream;
@@ -97,13 +94,17 @@ load_uri_cb (GObject *source_object,
 	     GAsyncResult *res,
 	     gpointer user_data)
 {
-	SoupProtocol *protocol = source_object;
-	GSimpleAsyncResult *result = user_data;
+	SoupProtocol *protocol;
+	GSimpleAsyncResult *result;
 	GInputStream *input_stream;
 	GError *error = NULL;
 
-	g_debug ("soup_uri_loader_load_uri_cb called");
+	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
+	g_return_if_fail (G_IS_ASYNC_RESULT (res));
+	g_return_if_fail (G_IS_SIMPLE_ASYNC_RESULT (user_data));
 
+	protocol = SOUP_PROTOCOL_FTP (source_object);
+	result = user_data;
 	input_stream = soup_protocol_load_uri_finish (protocol, res, error);
 	if (input_stream) {
 		g_simple_async_result_set_op_res_gpointer (result,
@@ -128,6 +129,9 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	SoupProtocol *protocol;
 	GSimpleAsyncResult *result;
+
+	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
+	g_return_if_fail (uri != NULL);
 
 	result = g_simple_async_result_new (loader,
 					    callback,
