@@ -84,7 +84,8 @@ soup_headers =			\
 	soup-uri.h		\
 	soup-uri-loader.h	\
 	soup-value-utils.h	\
-	soup-xmlrpc.h
+	soup-xmlrpc.h		\
+	ParseFTPList.h
 
 libsoupinclude_HEADERS =	\
 	$(soup_headers)		\
@@ -165,7 +166,8 @@ libsoup_2_4_la_SOURCES =		\
 	soup-uri.c			\
 	soup-uri-loader.c		\
 	soup-value-utils.c		\
-	soup-xmlrpc.c
+	soup-xmlrpc.c			\
+	ParseFTPList.c
 
 if BUILD_LIBSOUP_GNOME
 

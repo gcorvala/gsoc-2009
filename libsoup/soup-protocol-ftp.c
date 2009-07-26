@@ -1,5 +1,6 @@
 #include "soup-protocol-ftp.h"
 #include "soup-misc.h"
+#include "ParseFTPList.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -184,6 +185,7 @@ gboolean	      ftp_parse_feat_reply		(SoupProtocolFTPContext	 *data,
 							 SoupProtocolFTPReply	 *reply);
 GSocketConnectable   *ftp_parse_pasv_reply		(SoupProtocolFTPContext	 *data,
 							 SoupProtocolFTPReply	 *reply);
+void		      ftp_parse_list_reply		(const gchar		 *str);
 /* async callbacks */
 void		      ftp_callback_conn			(GObject *source_object,
 							 GAsyncResult *res,
@@ -374,7 +376,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	context = g_hash_table_lookup (priv->connections, uri);
 	if (!context) {
 		context = g_malloc0 (sizeof (SoupProtocolFTPContext));
-		context->protocol = g_object_ref (protocol);
+		context->protocol = g_object_ref (protocol_ftp);
 		g_hash_table_insert (priv->connections, soup_uri_copy (uri), context);
 	}
 	context->uri = soup_uri_copy (uri);

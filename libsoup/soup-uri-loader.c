@@ -42,7 +42,7 @@ soup_uri_loader_init (SoupURILoader *self)
 
 	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
 	
-	priv->protocols = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
+	priv->protocols = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
 }
 
 SoupURILoader *
@@ -81,7 +81,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 		if (protocol == NULL)
 		{
 			protocol = soup_protocol_ftp_new ();
-			g_hash_table_insert (priv->protocols, uri->scheme, protocol);
+			g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
 		}
 	}
 	else
@@ -101,25 +101,23 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 {
 	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	SoupProtocol *protocol;
+	GSimpleAsyncResult *result;
 
-	if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-		g_debug ("http");
-
-	else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-		g_debug ("https");
-
-	else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-	{
-		g_debug ("ftp protocol detected!");
-		protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
-		if (protocol == NULL)
-		{
+	result = g_simple_async_result_new (loader,
+					    callback,
+					    user_data,
+					    soup_uri_loader_load_uri_async);
+	protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
+	if (!protocol) {
+		if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+			g_debug ("http");
+		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
+			g_debug ("https");
+		else if (uri->scheme == SOUP_URI_SCHEME_FTP)
 			protocol = soup_protocol_ftp_new ();
-			g_hash_table_insert (priv->protocols, uri->scheme, protocol);
-		}
+		else
+			g_debug ("error");
+		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
 	}
-	else
-		g_debug ("error");
-
 	soup_protocol_load_uri_async (protocol, uri, cancellable, callback, user_data);
 }
