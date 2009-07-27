@@ -173,3 +173,34 @@ soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 
 	return input_stream;
 }
+
+GList *
+soup_uri_loader_get_list (SoupURILoader	 *loader,
+			  SoupURI	 *uri,
+			  GCancellable	 *cancellable,
+			  GError	**error)
+{
+	SoupURILoaderPrivate *priv;
+	GList *file_list;
+	SoupProtocol *protocol;
+
+	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
+	g_return_if_fail (uri != NULL);
+
+	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+	protocol = g_hash_table_lookup (priv->protocols, uri->scheme);
+	if (!protocol) {
+		if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+			g_debug ("http");
+		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
+			g_debug ("https");
+		else if (uri->scheme == SOUP_URI_SCHEME_FTP)
+			protocol = soup_protocol_ftp_new ();
+		else
+			g_debug ("error");
+		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), protocol);
+	}
+	file_list = soup_protocol_get_list (protocol, uri, cancellable, error);
+
+	return file_list;
+}

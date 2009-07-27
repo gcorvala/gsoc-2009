@@ -24,19 +24,22 @@ struct _SoupProtocolClass {
 	GObjectClass parent;
 
 	/* protocol methods */
-	GInputStream *(*load_uri)	(SoupProtocol	 *protocol,
-					 SoupURI	 *uri,
-					 GCancellable	 *cancellable,
-					 GError		**error);
-	
-	void 	(*load_uri_async)	(SoupProtocol		*protocol,
-					 SoupURI		*uri,
-					 GCancellable		*cancellable,
-					 GAsyncReadyCallback	 callback,
-					 gpointer		 user_data);
-	GInputStream *(*load_uri_finish) (SoupProtocol		*protocol,
-					  GAsyncResult		*result,
-					  GError	       **error);
+	GInputStream *(*load_uri)	 (SoupProtocol		 *protocol,
+					  SoupURI		 *uri,
+					  GCancellable		 *cancellable,
+					  GError			**error);
+	void 	(*load_uri_async)	 (SoupProtocol		 *protocol,
+					  SoupURI		 *uri,
+					  GCancellable		 *cancellable,
+					  GAsyncReadyCallback	  callback,
+					  gpointer		  user_data);
+	GInputStream *(*load_uri_finish) (SoupProtocol		 *protocol,
+					  GAsyncResult		 *result,
+					  GError		**error);
+	GList *(*get_list)		 (SoupProtocol		 *protocol,
+					  SoupURI		 *uri,
+					  GCancellable		 *cancellable,
+					  GError		**error);
 };
 
 GType       	 soup_protocol_get_type	       (void);
@@ -55,6 +58,11 @@ void		 soup_protocol_load_uri_async  (SoupProtocol		*protocol,
 GInputStream	*soup_protocol_load_uri_finish (SoupProtocol		*protocol,
 						GAsyncResult		*result,
 						GError		       **error);
+
+GList		*soup_protocol_get_list		(SoupProtocol		 *protocol,
+						 SoupURI		 *uri,
+						 GCancellable		 *cancellable,
+						 GError			**error);
 
 G_END_DECLS
 

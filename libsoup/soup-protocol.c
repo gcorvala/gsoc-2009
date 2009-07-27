@@ -9,6 +9,7 @@ soup_protocol_class_init (SoupProtocolClass *klass)
 	klass->load_uri = NULL;
 	klass->load_uri_async = NULL;
 	klass->load_uri_finish = NULL;
+	klass->get_list = NULL;
 }
 
 static void
@@ -26,9 +27,9 @@ soup_protocol_load_uri (SoupProtocol		*protocol,
 
 	g_debug ("soup_protocol_load_uri called");
 
-	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
-	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL);
-	g_return_if_fail (uri != NULL);
+	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), NULL);
+	g_return_val_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL, NULL);
+	g_return_val_if_fail (uri != NULL, NULL);
 
 	input_stream = SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri (protocol,
 								     uri,
@@ -67,13 +68,36 @@ soup_protocol_load_uri_finish (SoupProtocol	 *protocol,
 
 	g_debug ("soup_protocol_load_uri_finish called");
 
-	g_return_if_fail (SOUP_IS_PROTOCOL (protocol));
-	g_return_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish != NULL);
-	g_return_if_fail (G_IS_ASYNC_RESULT (result));
+	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), NULL);
+	g_return_val_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish != NULL, NULL);
+	g_return_val_if_fail (G_IS_ASYNC_RESULT (result), NULL);
 
 	input_stream = SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri_finish (protocol,
 									    result,
 									    error);
 
 	return input_stream;
+}
+
+GList *
+soup_protocol_get_list (SoupProtocol *protocol,
+			SoupURI	*uri,
+			GCancellable *cancellable,
+			GError **error)
+{
+	GList *file_list;
+
+	g_debug ("soup_protocol_load_uri called");
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), NULL);
+	g_return_val_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL, NULL);
+	g_return_val_if_fail (uri != NULL, NULL);
+
+	file_list = SOUP_PROTOCOL_GET_CLASS (protocol)->get_list (protocol,
+								  uri,
+								  cancellable,
+								  error);
+
+	return file_list;
+
 }

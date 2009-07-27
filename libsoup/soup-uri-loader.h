@@ -47,6 +47,10 @@ GInputStream	*soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 						  GAsyncResult	 *result,
 						  GError	**error);
 
+GList		*soup_uri_loader_get_list	 (SoupURILoader	 *loader,
+						  SoupURI	 *uri,
+						  GCancellable	 *cancellable,
+						  GError	**error);
 G_END_DECLS
 
 #endif /*SOUP_URI_LOADER_H*/
