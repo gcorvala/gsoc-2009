@@ -199,7 +199,8 @@ gboolean	      ftp_parse_feat_reply		(SoupProtocolFTPContext	 *data,
 							 SoupProtocolFTPReply	 *reply);
 GSocketConnectable   *ftp_parse_pasv_reply		(SoupProtocolFTPContext	 *data,
 							 SoupProtocolFTPReply	 *reply);
-void		      ftp_parse_list_reply		(const gchar		 *str);
+GList		     *ftp_parse_list_reply		(SoupProtocolFTPContext  *context,
+							 SoupProtocolFTPReply	 *reply);
 /* async callbacks */
 void		      ftp_callback_conn			(GObject *source_object,
 							 GAsyncResult *res,
@@ -364,6 +365,47 @@ ftp_parse_pasv_reply (SoupProtocolFTPContext *data,
 	g_free (hostname);
 
 	return conn;
+}
+
+GList *
+ftp_parse_list_reply (SoupProtocolFTPContext	*context,
+		      SoupProtocolFTPReply	*reply)
+{
+	GList *file_list;
+	GFileInfo *file_info;
+	gchar **lines;
+	int type, i = 1; // first line do not contain any data
+
+	if (reply->code != 213)
+		return NULL;
+	lines = g_strsplit (reply->message->str, "\n", 0);
+	if (!lines)
+		return NULL;
+	struct list_state state = { 0, };
+	while (lines[i]) {
+		struct list_result result = { 0, };
+		type = ParseFTPList (lines[i++], &state, &result);
+		file_info = g_file_info_new();
+		if (result.fe_type == 'f')
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_REGULAR);
+		else if (result.fe_type == 'd')
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_DIRECTORY);
+		else if (result.fe_type == 'l') {
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_SYMBOLIC_LINK);
+			g_file_info_set_is_symlink (file_info, TRUE);
+		}
+		else {
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_UNKNOWN);
+			continue;
+		}
+		g_file_info_set_name (file_info, g_strdup (result.fe_fname));
+		g_file_info_set_size (file_info, atoi (result.fe_size));
+		//g_file_info_set_modification_time (file_info, 
+		g_debug ("file : [%s] - %u", g_file_info_get_name (file_info), g_file_info_get_size (file_info));
+		g_list_append (file_list, file_info);
+	}
+
+	return file_list;
 }
 
 gboolean
@@ -559,6 +601,13 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		switch (reply->code) {
 			case 211:
 				ftp_parse_feat_reply (context, reply);
+				ftp_reply_free (reply);
+				reply = ftp_send_and_recv (protocol_ftp,
+							   context,
+							   "STAT .",
+							   context->async_cancellable,
+							   error);
+				ftp_parse_list_reply (context, reply);
 				ftp_reply_free (reply);
 				reply = ftp_send_and_recv (protocol_ftp,
 							   context,
