@@ -56,7 +56,7 @@ main (int argc, char **argv)
 	 **/
 	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/pub/linux/kernel/v2.6/ChangeLog-2.6.30");
 	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome.msg");
-	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome2.msg");
+	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/welcome.msg");
 	/**
 	 * Construct SoupURILoader
 	 **/
