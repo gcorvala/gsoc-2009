@@ -1,7 +1,6 @@
 #include "libsoup/soup.h"
 #include "libsoup/soup-uri.h"
 #include "libsoup/soup-uri-loader.h"
-#include "libsoup/soup-input-stream.h"
 
 #include <glib.h>
 #include <gio/gio.h>
@@ -38,8 +37,6 @@ callback (GObject *source,
 	}
 }
 
-void test (GObject *stream, gpointer user_data) { g_debug ("test called"); }
-
 int
 main (int argc, char **argv)
 {
@@ -48,8 +45,7 @@ main (int argc, char **argv)
 	GError *error = NULL;
 	GInputStream *input;
 	GDataInputStream *data;
-	SoupInputStream *soup_input;
-	gchar buffer[65];
+	gchar *buffer;
 	gsize len;
 	gssize count;
 
@@ -82,19 +78,13 @@ main (int argc, char **argv)
 	 * SoupURILoader success
 	 * Try to read GInputStream content
 	 **/
-	soup_input = soup_input_stream_new (input);
-	g_signal_connect (soup_input, "end-of-stream", test, NULL);
-	//data = g_data_input_stream_new (input);
+	data = g_data_input_stream_new (input);
 
-	//buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-	count = soup_input_stream_read (soup_input, buffer, 64, NULL, NULL);
-	buffer[64] = 0;
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 
-	//while (buffer != NULL) {
-	while (count > 0) {
-		g_debug ("[sync] <--- %s ---", buffer);
-		//buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		count = soup_input_stream_read (soup_input, buffer, 64, NULL, NULL);
+	while (buffer != NULL) {
+		g_debug ("[sync] <--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 	}
 
 	//g_object_unref (data);

@@ -27,15 +27,9 @@ struct _SoupInputStreamClass {
   /* class members */
 };
 
-GType		 ftp_server_get_type (void);
+GType		 soup_input_stream_get_type (void);
 
 SoupInputStream	*soup_input_stream_new	(GInputStream	 *base_stream);
-
-gssize		 soup_input_stream_read	(GInputStream	 *stream,
-					 void		 *buffer,
-					 gsize		  count,
-					 GCancellable	 *cancellable,
-					 GError		**error);
 
 G_END_DECLS
 

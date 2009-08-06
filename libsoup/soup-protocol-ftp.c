@@ -1,5 +1,6 @@
 #include "soup-protocol-ftp.h"
 #include "soup-misc.h"
+#include "soup-input-stream.h"
 #include "ParseFTPList.h"
 #include <string.h>
 #include <stdlib.h>
@@ -324,7 +325,7 @@ GList *
 ftp_parse_list_reply (SoupProtocolFTP		*protocol,
 		      SoupProtocolFTPReply	*reply)
 {
-	GList *file_list;
+	GList *file_list = NULL;
 	GFileInfo *file_info;
 	gchar **lines;
 	int type, i = 1; // first line do not contain any data
@@ -528,6 +529,15 @@ protocol_ftp_auth (SoupProtocolFTP	 *protocol,
 
 }
 
+static void
+load_uri_complete (SoupInputStream *soup_stream, gpointer user_data)
+{
+	SoupProtocolFTP *protocol_ftp = user_data;
+
+	g_debug ("FIXME, load_uri_complete, clean up protocol_ftp");
+}
+
+
 GInputStream *
 soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    SoupURI			*uri,
@@ -538,6 +548,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
 	GInputStream *input_stream;
+	SoupInputStream *soup_stream;
 	GSocketConnectable *conn;
 	gchar *msg, *uri_decode;
 
@@ -655,7 +666,13 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	//g_object_ref (input_stream);
 	//g_object_set_data_full (G_OBJECT (input_stream), "socket-connection", data, g_object_unref);
 
-	return input_stream;
+	soup_stream = soup_input_stream_new (input_stream);
+	g_signal_connect (soup_stream, "end-of-stream",
+			  G_CALLBACK (load_uri_complete), protocol_ftp);
+	g_signal_connect (soup_stream, "stream-closed",
+			  G_CALLBACK (load_uri_complete), protocol_ftp);
+
+	return G_INPUT_STREAM (soup_stream);
 }
 
 void
