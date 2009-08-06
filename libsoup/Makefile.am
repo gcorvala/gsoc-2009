@@ -61,6 +61,7 @@ soup_headers =			\
 	soup-date.h		\
 	soup-form.h		\
 	soup-headers.h		\
+	soup-input-stream.h	\
 	soup-logger.h		\
 	soup-message.h		\
 	soup-message-body.h	\
@@ -132,6 +133,7 @@ libsoup_2_4_la_SOURCES =		\
 	soup-form.c			\
 	soup-gnutls.c			\
 	soup-headers.c			\
+	soup-input-stream.c		\
 	soup-logger.c			\
 	soup-message.c			\
 	soup-message-body.c		\

@@ -17,19 +17,25 @@ typedef struct _SoupInputStreamClass SoupInputStreamClass;
 typedef struct _SoupInputStreamPrivate SoupInputStreamPrivate;
 
 struct _SoupInputStream {
-  GObject parent;
+  GFilterInputStream parent;
   /* < private > */
   SoupInputStreamPrivate *priv;
 };
 
 struct _SoupInputStreamClass {
-  GObjectClass parent;
+  GFilterInputStreamClass parent;
   /* class members */
 };
 
-GType		 ftp_server_get_type		 (void);
+GType		 ftp_server_get_type (void);
 
-SoupInputStream	*soup_uri_loader_new		 (void);
+SoupInputStream	*soup_input_stream_new	(GInputStream	 *base_stream);
+
+gssize		 soup_input_stream_read	(GInputStream	 *stream,
+					 void		 *buffer,
+					 gsize		  count,
+					 GCancellable	 *cancellable,
+					 GError		**error);
 
 G_END_DECLS
 
