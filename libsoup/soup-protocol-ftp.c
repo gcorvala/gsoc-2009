@@ -100,13 +100,12 @@ SoupProtocolFTPReply *ftp_receive_reply			(SoupProtocolFTP	 *protocol,
 void		      ftp_receive_reply_async		(SoupProtocolFTP	 *protocol,
 							 GCancellable		 *cancellable,
 							 GAsyncReadyCallback	  callback);
-void		      ftp_receive_reply_multi_async	(GObject *source_object,
-							 GAsyncResult *res,
-							 gpointer user_data);
+void		      ftp_receive_reply_multi_async	(GObject		 *source_object,
+							 GAsyncResult		 *res,
+							 gpointer		  user_data);
 SoupProtocolFTPReply *ftp_receive_reply_finish		(SoupProtocolFTP	 *protocol,
 							 GAsyncResult		 *result,
 							 GError			**error);
-
 gboolean	      ftp_send_command			(SoupProtocolFTP	 *protocol,
 							 const gchar		 *str,
 							 GCancellable		 *cancellable,
@@ -215,7 +214,7 @@ soup_protocol_ftp_class_init (SoupProtocolFTPClass *klass)
 	g_debug ("soup_protocol_ftp_class_init called");
 
 	g_type_class_add_private (klass, sizeof (SoupProtocolFTPPrivate));
-	
+
 	/* virtual method definition */
 	protocol_class->load_uri = soup_protocol_ftp_load_uri;
 	protocol_class->load_uri_async = soup_protocol_ftp_load_uri_async;
@@ -228,7 +227,7 @@ static void
 soup_protocol_ftp_init (SoupProtocolFTP *self)
 {
 	SoupProtocolFTPPrivate *priv;
-	
+
 	g_debug ("soup_protocol_ftp_init called");
 
 	self->priv = priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (self);
@@ -357,7 +356,7 @@ ftp_parse_list_reply (SoupProtocolFTP		*protocol,
 		}
 		g_file_info_set_name (file_info, g_strdup (result.fe_fname));
 		g_file_info_set_size (file_info, atoi (result.fe_size));
-		//g_file_info_set_modification_time (file_info, 
+		//g_file_info_set_modification_time (file_info,
 		g_debug ("file : [%s] - %u Bytes", g_file_info_get_name (file_info), g_file_info_get_size (file_info));
 		g_list_append (file_list, file_info);
 	}
@@ -440,6 +439,95 @@ ftp_check_reply (SoupProtocolFTP	 *protocol,
 	}
 }
 
+/**
+ * gboolean protocol_ftp_auth (SoupProtocolFTP *protocol, GError **error)
+ * void protocol_ftp_auth_async (SoupProtocolFTP *protocol, GCancellable *cancellable, GAsyncReadyCallback callback)
+ * gboolean protocol_ftp_auth_finish (SoupProtocolFTP *protocol, GAsyncResult *result, GError **error)
+ * GInputStream * protocol_ftp_list (SoupProtocolFTP *protocol, gchar *path)
+ * GInputStream * protocol_ftp_retr (SoupProtocolFTP *protocol, gchar *path)
+ * protocol_ftp_cd (SoupProtocolFTP *protocol, gchar *path)
+ * gchar * protocol_ftp_cwd (SoupProtocolFTP *protocol)
+ **/
+
+gboolean
+protocol_ftp_auth (SoupProtocolFTP	 *protocol,
+		   GError		**error)
+{
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPReply *reply;
+	gchar *msg;
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	msg = g_strdup_printf ("USER %s", priv->uri->user);
+	reply = ftp_send_and_recv (protocol,
+				   msg,
+				   priv->async_cancellable,
+				   error);
+	g_free (msg);
+	if (!reply)
+		return FALSE;
+	if (!ftp_check_reply (protocol, reply, error)) {
+		ftp_reply_free (reply);
+		return FALSE;
+	}
+	else if (reply->code == 230) {
+		ftp_reply_free (reply);
+		return TRUE;
+	}
+	else if (reply->code == 332) {
+		ftp_reply_free (reply);
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Authentication : ACCT not implemented");
+		return FALSE;
+	}
+	else if (reply->code != 331) {
+		ftp_reply_free (reply);
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Authentication : Unexpected reply received");
+		return FALSE;
+	}
+	ftp_reply_free (reply);
+	msg = g_strdup_printf ("PASS %s", priv->uri->password);
+	reply = ftp_send_and_recv (protocol,
+				   msg,
+				   priv->async_cancellable,
+				   error);
+	g_free (msg);
+	if (!reply)
+		return FALSE;
+	if (!ftp_check_reply (protocol, reply, error)) {
+		ftp_reply_free (reply);
+		return FALSE;
+	}
+	else if (reply->code == 230) {
+		ftp_reply_free (reply);
+		return TRUE;
+	}
+	else if (reply->code == 332) {
+		ftp_reply_free (reply);
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Authentication : ACCT not implemented");
+		return FALSE;
+	}
+	else {
+		ftp_reply_free (reply);
+		g_set_error_literal (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Authentication : Unexpected reply received");
+		return FALSE;
+	}
+
+}
+
 GInputStream *
 soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    SoupURI			*uri,
@@ -478,74 +566,11 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	if (!priv->control_output)
 		priv->control_output = g_io_stream_get_output_stream (G_IO_STREAM (priv->control));
 	reply = ftp_receive_reply (protocol_ftp, priv->async_cancellable, error);
-	if (reply) {
-		if (ftp_check_reply (protocol_ftp, reply, error)) {
-			if (REPLY_IS_POSITIVE_PRELIMINARY (reply)) {
-				g_set_error (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     SOUP_FTP_SERVICE_UNAVAILABLE,
-					     "Service unavailable");
-				ftp_reply_free (reply);
-				return NULL;
-			}
-			else {
-				ftp_reply_free (reply);
-				msg = g_strdup_printf ("USER %s", priv->uri->user);
-				reply = ftp_send_and_recv (protocol_ftp,
-							   msg,
-							   priv->async_cancellable,
-							   error);
-				g_free (msg);
-			}
-		}
-		else
-			return NULL;
-	}
-	if (reply) {
-		switch (reply->code) {
-			//case 230:
-				//ok send FEAT
-			case 331:
-				ftp_reply_free (reply);
-				msg = g_strdup_printf ("PASS %s", priv->uri->password);
-				reply = ftp_send_and_recv (protocol_ftp,
-							   msg,
-							   priv->async_cancellable,
-							   error);
-				g_free (msg);
-				break;
-			//case 332:
-				//ok send ACCT
-			//case 530:
-			//case 500:
-			//case 501:
-				//error
-			//case 421:
-				//not available
-		}
-	}
-	if (reply) {
-		switch (reply->code) {
-			//case 202:
-			case 230:
-				ftp_reply_free (reply);
-				reply = ftp_send_and_recv (protocol_ftp,
-							   "FEAT",
-							   priv->async_cancellable,
-							   error);
-				break;
-				//ok send PASS
-			//case 332:
-				//ok send ACCT
-			//case 530:
-			//case 500:
-			//case 501:
-			//case 503:
-				//error
-			//case 421:
-				//not available
-		}
-	}
+	// check welcome code
+	ftp_reply_free (reply);
+	if (!protocol_ftp_auth (protocol_ftp, error))
+		return NULL;
+	reply = ftp_send_and_recv (protocol_ftp, "FEAT", priv->async_cancellable, error);
 	if (reply) {
 		switch (reply->code) {
 			case 211:
@@ -680,7 +705,7 @@ soup_protocol_ftp_load_uri_finish (SoupProtocol	 *protocol,
 	GInputStream *input_stream;
 
 	g_debug ("soup_protocol_ftp_load_uri_finish called");
-	
+
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
 
 	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
