@@ -1,6 +1,6 @@
 #include "soup-protocol.h"
 
-G_DEFINE_TYPE (SoupProtocol, soup_protocol, G_TYPE_OBJECT); 
+G_DEFINE_TYPE (SoupProtocol, soup_protocol, G_TYPE_OBJECT);
 
 static void
 soup_protocol_class_init (SoupProtocolClass *klass)
@@ -9,7 +9,6 @@ soup_protocol_class_init (SoupProtocolClass *klass)
 	klass->load_uri = NULL;
 	klass->load_uri_async = NULL;
 	klass->load_uri_finish = NULL;
-	klass->get_list = NULL;
 }
 
 static void
@@ -77,27 +76,4 @@ soup_protocol_load_uri_finish (SoupProtocol	 *protocol,
 									    error);
 
 	return input_stream;
-}
-
-GList *
-soup_protocol_get_list (SoupProtocol *protocol,
-			SoupURI	*uri,
-			GCancellable *cancellable,
-			GError **error)
-{
-	GList *file_list;
-
-	g_debug ("soup_protocol_load_uri called");
-
-	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), NULL);
-	g_return_val_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL, NULL);
-	g_return_val_if_fail (uri != NULL, NULL);
-
-	file_list = SOUP_PROTOCOL_GET_CLASS (protocol)->get_list (protocol,
-								  uri,
-								  cancellable,
-								  error);
-
-	return file_list;
-
 }

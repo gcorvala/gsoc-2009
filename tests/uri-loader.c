@@ -10,6 +10,7 @@ callback (GObject *source,
 	  GAsyncResult *res,
 	  gpointer user_data)
 {
+	SoupURILoader *loader;
 	GInputStream *input;
 	GDataInputStream *data;
 	gchar *buffer;
@@ -18,6 +19,9 @@ callback (GObject *source,
 
 	g_debug ("user callback called");
 
+	g_warn_if_fail (SOUP_IS_URI_LOADER (source));
+
+	loader = SOUP_URI_LOADER (source);
 	input = soup_uri_loader_load_uri_finish (source, res, &error);
 
 	if (input) {
@@ -35,6 +39,7 @@ callback (GObject *source,
 	else {
 		g_debug ("error detected : [%u] %s", error->code, error->message);
 	}
+	g_object_unref (loader);
 }
 
 int
@@ -57,7 +62,7 @@ main (int argc, char **argv)
 	 **/
 	uri1 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/pub/linux/kernel/v2.6/ChangeLog-2.6.30");
 	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/welcome.msg");
-	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.kernel.org/welcome.msg");
+	uri3 = soup_uri_new ("ftp://anonymous:anonymous@tgftp.nws.noaa.gov/data/observations/metar/cycles/00Z.TXT");
 	/**
 	 * Construct SoupURILoader
 	 **/
@@ -87,21 +92,37 @@ main (int argc, char **argv)
 		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
 	}
 
-	//g_object_unref (data);
+	g_object_unref (data);
 
+	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
+	data = g_data_input_stream_new (input);
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	while (buffer != NULL) {
+		g_debug ("[sync] <--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
+	g_object_unref (data);
+	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
+	data = g_data_input_stream_new (input);
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	while (buffer != NULL) {
+		g_debug ("[sync] <--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
+	g_object_unref (data);
 	/**
 	 * test async
 	 **/
 
-	//GMainLoop *loop = g_main_loop_new (NULL, TRUE);
+	GMainLoop *loop = g_main_loop_new (NULL, TRUE);
 
-	//soup_uri_loader_load_uri_async (loader,
-					//uri3,
-					//NULL,
-					//callback,
-					//NULL);
+	soup_uri_loader_load_uri_async (loader,
+					uri2,
+					NULL,
+					callback,
+					NULL);
 
-	//g_main_loop_run (loop);
+	g_main_loop_run (loop);
 
 	return 0;
 }

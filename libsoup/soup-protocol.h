@@ -36,10 +36,6 @@ struct _SoupProtocolClass {
 	GInputStream *(*load_uri_finish) (SoupProtocol		 *protocol,
 					  GAsyncResult		 *result,
 					  GError		**error);
-	GList *(*get_list)		 (SoupProtocol		 *protocol,
-					  SoupURI		 *uri,
-					  GCancellable		 *cancellable,
-					  GError		**error);
 };
 
 GType       	 soup_protocol_get_type	       (void);
@@ -58,11 +54,6 @@ void		 soup_protocol_load_uri_async  (SoupProtocol		*protocol,
 GInputStream	*soup_protocol_load_uri_finish (SoupProtocol		*protocol,
 						GAsyncResult		*result,
 						GError		       **error);
-
-GList		*soup_protocol_get_list		(SoupProtocol		 *protocol,
-						 SoupURI		 *uri,
-						 GCancellable		 *cancellable,
-						 GError			**error);
 
 G_END_DECLS
 
