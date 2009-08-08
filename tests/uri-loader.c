@@ -52,7 +52,10 @@ display_directory (gpointer data,
 	g_return_if_fail (G_IS_FILE_INFO (data));
 
 	info = G_FILE_INFO (data);
-	g_debug ("->%s<-", g_file_info_get_name (info));
+	g_debug ("[%c] %25s %60u Bytes",
+		 g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY ? 'd' : 'f',
+		 g_file_info_get_name (info),
+		 g_file_info_get_size (info));
 }
 
 int
@@ -81,7 +84,7 @@ main (int argc, char **argv)
 	 **/
 	uri1 = soup_uri_new ("ftp://anonymous:anonymous@tgftp.nws.noaa.gov/README.TXT");
 	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/about");
-	uri3 = soup_uri_new ("ftp://anonymous:anonymous@tgftp.nws.noaa.gov/data/observations/metar/cycles/");
+	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/");
 	/**
 	 * Construct SoupURILoader
 	 **/
