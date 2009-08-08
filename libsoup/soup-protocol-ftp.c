@@ -141,8 +141,6 @@ gboolean	      ftp_parse_feat_reply		(SoupProtocolFTP	 *protocol,
 							 SoupProtocolFTPReply	 *reply);
 GSocketConnectable   *ftp_parse_pasv_reply		(SoupProtocolFTP	 *protocol,
 							 SoupProtocolFTPReply	 *reply);
-GList		     *ftp_parse_list_reply		(SoupProtocolFTP	 *protocol,
-							 SoupProtocolFTPReply	 *reply);
 /* async callbacks */
 void		      ftp_callback_conn			(GObject *source_object,
 							 GAsyncResult *res,
@@ -317,50 +315,6 @@ ftp_parse_pasv_reply (SoupProtocolFTP		*protocol,
 	g_free (hostname);
 
 	return conn;
-}
-
-GList *
-ftp_parse_list_reply (SoupProtocolFTP		*protocol,
-		      SoupProtocolFTPReply	*reply)
-{
-	GList *file_list = NULL;
-	GFileInfo *file_info;
-	gchar **lines;
-	int type, i = 1; // first line do not contain any data
-
-	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
-	g_return_val_if_fail (reply != NULL, NULL);
-
-	if (reply->code != 213)
-		return NULL;
-	lines = g_strsplit (reply->message->str, "\n", 0);
-	if (!lines)
-		return NULL;
-	struct list_state state = { 0, };
-	while (lines[i]) {
-		struct list_result result = { 0, };
-		type = ParseFTPList (lines[i++], &state, &result);
-		file_info = g_file_info_new();
-		if (result.fe_type == 'f')
-			g_file_info_set_file_type (file_info, G_FILE_TYPE_REGULAR);
-		else if (result.fe_type == 'd')
-			g_file_info_set_file_type (file_info, G_FILE_TYPE_DIRECTORY);
-		else if (result.fe_type == 'l') {
-			g_file_info_set_file_type (file_info, G_FILE_TYPE_SYMBOLIC_LINK);
-			g_file_info_set_is_symlink (file_info, TRUE);
-		}
-		else {
-			g_file_info_set_file_type (file_info, G_FILE_TYPE_UNKNOWN);
-			continue;
-		}
-		g_file_info_set_name (file_info, g_strdup (result.fe_fname));
-		g_file_info_set_size (file_info, atoi (result.fe_size));
-		//g_file_info_set_modification_time (file_info,
-		g_debug ("file : [%s] - %u Bytes", g_file_info_get_name (file_info), g_file_info_get_size (file_info));
-		g_list_append (file_list, file_info);
-	}
-
-	return file_list;
 }
 
 gboolean
@@ -1068,7 +1022,7 @@ protocol_ftp_list_complete (SoupInputStream	 *soup_stream,
 	g_return_if_fail (SOUP_IS_INPUT_STREAM (soup_stream));
 	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (user_data));
 
-	protocol_ftp = user_data;
+	protocol_ftp = SOUP_PROTOCOL_FTP (user_data);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	g_signal_handlers_disconnect_by_func (soup_stream,
 					      protocol_ftp_list_complete,
@@ -1077,6 +1031,81 @@ protocol_ftp_list_complete (SoupInputStream	 *soup_stream,
 	reply = ftp_receive_reply (protocol_ftp, NULL, NULL);
 	if (reply)
 		ftp_reply_free (reply);
+}
+
+gint
+protocol_ftp_file_info_list_compare (gpointer	data,
+				     gchar	*name)
+{
+	GFileInfo *info;
+
+	g_return_val_if_fail (G_IS_FILE_INFO (data), -1);
+	g_return_val_if_fail (name != NULL,-1);
+
+	info = G_FILE_INFO (data);
+	return g_strcmp0 (g_file_info_get_name (info), name);
+}
+
+gint
+protocol_ftp_file_info_list_sort (gpointer	data1,
+				  gpointer	data2)
+{
+	GFileInfo *info1, *info2;
+
+	g_return_val_if_fail (G_IS_FILE_INFO (data1), -1);
+	g_return_val_if_fail (G_IS_FILE_INFO (data2), -1);
+
+	info1 = G_FILE_INFO (data1);
+	info2 = G_FILE_INFO (data2);
+	return g_strcmp0 (g_file_info_get_name (info1), g_file_info_get_name (info2));
+}
+
+GList *
+protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
+		         GInputStream		*stream)
+{
+	SoupProtocolFTPPrivate *priv;
+	GDataInputStream *dstream;
+	struct list_state state = { 0, };
+	GList *file_list = NULL;
+	GFileInfo *file_info;
+	gchar *buffer;
+	GError *error = NULL;
+	gsize len = 0;
+	int type;
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
+	g_return_val_if_fail (G_IS_INPUT_STREAM (stream), NULL);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	dstream = g_data_input_stream_new (stream);
+	g_data_input_stream_set_newline_type (dstream, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
+
+	while (buffer = g_data_input_stream_read_line (dstream, &len, NULL, &error)) {
+		struct list_result result = { 0, };
+		type = ParseFTPList (buffer, &state, &result);
+		file_info = g_file_info_new();
+		if (result.fe_type == 'f')
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_REGULAR);
+		else if (result.fe_type == 'd')
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_DIRECTORY);
+		else if (result.fe_type == 'l') {
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_SYMBOLIC_LINK);
+			g_file_info_set_is_symlink (file_info, TRUE);
+		}
+		else {
+			g_file_info_set_file_type (file_info, G_FILE_TYPE_UNKNOWN);
+			continue;
+		}
+		g_file_info_set_name (file_info, g_strdup (result.fe_fname));
+		g_file_info_set_size (file_info, atoi (result.fe_size));
+		file_list = g_list_prepend (file_list, file_info);
+	}
+
+	g_object_unref (dstream);
+	file_list = g_list_sort (file_list, protocol_ftp_file_info_list_sort);
+
+	return file_list;
 }
 
 GInputStream *
@@ -1090,7 +1119,14 @@ protocol_ftp_list (SoupProtocolFTP	 *protocol,
 	GInputStream *istream;
 	GSocketConnectable *conn;
 	GSocketClient *client;
+	GList *file_list = NULL;
+	GFileInfo *dir_info;
 	gchar *msg;
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
+	g_return_val_if_fail (path != NULL, NULL);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 
 	reply = ftp_send_and_recv (protocol,
 				   "PASV",
@@ -1118,14 +1154,10 @@ protocol_ftp_list (SoupProtocolFTP	 *protocol,
 					      priv->async_cancellable,
 					      error);
 	g_object_unref (client);
-	if (!priv->data) {
-		g_set_error_literal (error,
-				     SOUP_PROTOCOL_FTP_ERROR,
-				     0,
-				     "Directory listing : Error during connection");
+	g_object_unref (conn);
+	if (!priv->data)
 		return NULL;
-	}
-	msg = g_strdup_printf ("LIST %s", path);
+	msg = g_strdup_printf ("LIST .%s", path);
 	reply = ftp_send_and_recv (protocol,
 				   msg,
 				   priv->async_cancellable,
@@ -1147,11 +1179,19 @@ protocol_ftp_list (SoupProtocolFTP	 *protocol,
 	}
 	ftp_reply_free (reply);
 	istream = g_io_stream_get_input_stream (G_IO_STREAM (priv->data));
-	sstream = soup_input_stream_new (istream);
+	dir_info = g_file_info_new ();
+	g_file_info_set_name (dir_info, path);
+	g_file_info_set_file_type (dir_info, G_FILE_TYPE_DIRECTORY);
+	sstream = soup_input_stream_new (istream, dir_info, NULL);
+	g_object_unref (dir_info);
 	g_signal_connect (sstream, "end-of-stream",
 			  G_CALLBACK (protocol_ftp_list_complete), protocol);
 	g_signal_connect (sstream, "stream-closed",
 			  G_CALLBACK (protocol_ftp_list_complete), protocol);
+	file_list = protocol_ftp_list_parse (protocol, G_OBJECT (sstream));
+	g_object_set (sstream,
+		      "children", file_list,
+		      NULL);
 
 	return G_INPUT_STREAM (sstream);
 }
@@ -1193,9 +1233,13 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
 	GInputStream *input_stream;
+	GInputStream *istream;
 	SoupInputStream *soup_stream;
 	GSocketConnectable *conn;
 	gchar *msg, *uri_decode;
+	gboolean is_dir = FALSE;
+	GList *listing = NULL;
+	GFileInfo *info;
 
 	g_debug ("soup_protocol_ftp_load_uri called");
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
@@ -1225,17 +1269,36 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		if (!protocol_ftp_auth (protocol_ftp, error))
 			return NULL;
 	}
+	if (g_str_has_suffix (uri->path, "/")) {
+		g_debug ("directory detected");
+		istream = protocol_ftp_list (protocol_ftp, uri->path, NULL);
+		return istream;
+	}
+	else {
+		gchar *parent_dir_path = g_strndup (uri->path, g_strrstr (uri->path, "/") - uri->path + 1);
+		istream = protocol_ftp_list (protocol_ftp, parent_dir_path, NULL);
+		g_free (parent_dir_path);
+		g_object_get (istream,
+			      "file-info", &info,
+			      "children", &listing,
+			      NULL);
+		GList *l = g_list_find_custom (listing,
+					    g_strrstr (uri->path, "/") + 1,
+					    protocol_ftp_file_info_list_compare);
+		if (g_file_info_get_file_type (l->data) == G_FILE_TYPE_DIRECTORY) {
+			g_debug ("directory detected");
+			istream = protocol_ftp_list (protocol_ftp, uri->path, NULL);
+			return istream;
+		}
+		else if (g_file_info_get_file_type (l->data) == G_FILE_TYPE_REGULAR)
+			g_debug ("file detected");
+		g_object_unref (istream);
+	}
 	reply = ftp_send_and_recv (protocol_ftp, "FEAT", priv->async_cancellable, error);
 	if (reply) {
 		switch (reply->code) {
 			case 211:
 				ftp_parse_feat_reply (protocol_ftp, reply);
-				ftp_reply_free (reply);
-				reply = ftp_send_and_recv (protocol_ftp,
-							   "STAT .",
-							   priv->async_cancellable,
-							   error);
-				ftp_parse_list_reply (protocol_ftp, reply);
 				ftp_reply_free (reply);
 				reply = ftp_send_and_recv (protocol_ftp,
 							   "PASV",
@@ -1310,7 +1373,7 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	//g_object_ref (input_stream);
 	//g_object_set_data_full (G_OBJECT (input_stream), "socket-connection", data, g_object_unref);
 
-	soup_stream = soup_input_stream_new (input_stream);
+	soup_stream = soup_input_stream_new (input_stream, NULL, NULL);
 	g_signal_connect (soup_stream, "end-of-stream",
 			  G_CALLBACK (protocol_ftp_retr_complete), protocol_ftp);
 	g_signal_connect (soup_stream, "stream-closed",
@@ -1374,7 +1437,7 @@ soup_protocol_ftp_load_uri_finish (SoupProtocol	 *protocol,
 	if (g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (result), error))
 		return NULL;
 	input_stream = g_io_stream_get_input_stream (G_IO_STREAM (priv->data));
-	soup_stream = soup_input_stream_new (input_stream);
+	soup_stream = soup_input_stream_new (input_stream, NULL, NULL);
 	g_signal_connect (soup_stream, "end-of-stream",
 			  G_CALLBACK (protocol_ftp_retr_complete), protocol_ftp);
 	g_signal_connect (soup_stream, "stream-closed",

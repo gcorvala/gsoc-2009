@@ -29,7 +29,9 @@ struct _SoupInputStreamClass {
 
 GType		 soup_input_stream_get_type (void);
 
-SoupInputStream	*soup_input_stream_new	(GInputStream	 *base_stream);
+SoupInputStream	*soup_input_stream_new		(GInputStream		 *base_stream,
+						 GFileInfo		 *file_info,
+						 GList			 *children);
 
 G_END_DECLS
 
