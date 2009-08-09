@@ -570,11 +570,15 @@ ftp_send_command (SoupProtocolFTP	 *protocol,
 		  GCancellable		 *cancellable,
 		  GError		**error)
 {
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	SoupProtocolFTPPrivate *priv;
 	gchar *request;
 	gssize bytes_written;
 	gboolean success;
 
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
+	g_return_val_if_fail (str != NULL, FALSE);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	request = g_strconcat (str, "\r\n", NULL);
 	bytes_written = g_output_stream_write (priv->control_output,
 					       request,
@@ -594,11 +598,15 @@ ftp_send_command_async (SoupProtocolFTP	 *protocol,
 			GCancellable		*cancellable,
 			GAsyncReadyCallback	 callback)
 {
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	SoupProtocolFTPPrivate *priv;
 	gchar *request;
 
 	g_debug ("[async] ---> %s", str);
 
+	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (protocol));
+	g_return_if_fail (str != NULL);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	priv->_async_result = g_simple_async_result_new (G_OBJECT (protocol),
 							    callback,
 							    NULL,
@@ -620,14 +628,20 @@ ftp_send_command_callback (GObject		 *source_object,
 			   GAsyncResult		 *result,
 			   gpointer		  user_data)
 {
-	SoupProtocolFTP *protocol = user_data;
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	SoupProtocolFTP *protocol;
+	SoupProtocolFTPPrivate *priv;
 	GError *error = NULL;
 	gboolean success;
 	gssize bytes_to_write, bytes_written;
 
+	g_return_if_fail (G_IS_OUTPUT_STREAM (source_object));
+	g_return_if_fail (G_IS_SIMPLE_ASYNC_RESULT (result));
+	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (user_data));
+
+	protocol = SOUP_PROTOCOL_FTP (user_data);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	bytes_to_write = g_simple_async_result_get_op_res_gssize (priv->_async_result);
-	bytes_written = g_output_stream_write_finish (G_OUTPUT_STREAM (priv->control_output),
+	bytes_written = g_output_stream_write_finish (G_OUTPUT_STREAM (source_object),
 						      result,
 						      &error);
 	success = (bytes_to_write == bytes_written);
@@ -638,7 +652,8 @@ ftp_send_command_callback (GObject		 *source_object,
 		g_error_free (error);
 	}
 	else {
-		g_simple_async_result_set_op_res_gboolean (G_SIMPLE_ASYNC_RESULT (priv->_async_result), success);
+		g_simple_async_result_set_op_res_gboolean (G_SIMPLE_ASYNC_RESULT (priv->_async_result),
+							   success);
 		g_simple_async_result_complete (priv->_async_result);
 	}
 }
@@ -648,12 +663,20 @@ ftp_send_command_finish (SoupProtocolFTP	 *protocol,
 			 GAsyncResult		 *result,
 			 GError			**error)
 {
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	SoupProtocolFTPPrivate *priv;
+	GSimpleAsyncResult *simple;
 	gboolean success;
 
-	if (!g_simple_async_result_is_valid (result, G_OBJECT (protocol), ftp_send_command_async))
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
+	g_return_val_if_fail (G_IS_SIMPLE_ASYNC_RESULT (result), FALSE);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+	simple = G_SIMPLE_ASYNC_RESULT (result);
+	if (!g_simple_async_result_is_valid (result,
+					     G_OBJECT (protocol),
+					     ftp_send_command_async))
 		g_critical ("ftp_send_command_finish FAILED");
-	success = g_simple_async_result_get_op_res_gboolean ((GSimpleAsyncResult *) result);
+	success = g_simple_async_result_get_op_res_gboolean (simple);
 	g_object_unref (priv->_async_result);
 	priv->_async_result = NULL;
 
