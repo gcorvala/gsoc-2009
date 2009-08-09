@@ -1052,8 +1052,6 @@ protocol_ftp_file_info_list_sort (gpointer	data1,
 				  gpointer	data2)
 {
 	GFileInfo *info1, *info2;
-	gchar *lower1, *lower2;
-	guint result;
 
 	g_return_val_if_fail (G_IS_FILE_INFO (data1), -1);
 	g_return_val_if_fail (G_IS_FILE_INFO (data2), -1);
@@ -1061,22 +1059,15 @@ protocol_ftp_file_info_list_sort (gpointer	data1,
 	info1 = G_FILE_INFO (data1);
 	info2 = G_FILE_INFO (data2);
 
-	lower1 = g_ascii_strdown (g_file_info_get_name (info1), -1);
-	lower2 = g_ascii_strdown (g_file_info_get_name (info2), -1);
-
 	if (g_file_info_get_file_type (info1) == G_FILE_TYPE_DIRECTORY &&
 	    g_file_info_get_file_type (info2) != G_FILE_TYPE_DIRECTORY)
-		result = -1;
+		return -1;
 	else if (g_file_info_get_file_type (info1) != G_FILE_TYPE_DIRECTORY &&
 		 g_file_info_get_file_type (info2) == G_FILE_TYPE_DIRECTORY)
-		result = 1;
+		return 1;
 	else
-		result = g_strcmp0 (lower1, lower2);
-
-	g_free (lower1);
-	g_free (lower2);
-
-	return result;
+		return g_ascii_strcasecmp (g_file_info_get_name (info1),
+					     g_file_info_get_name (info2));
 }
 
 GList *
