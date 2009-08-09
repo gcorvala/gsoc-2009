@@ -148,9 +148,6 @@ void		      ftp_callback_conn			(GObject *source_object,
 void		      ftp_callback_welcome		(GObject *source_object,
 							 GAsyncResult *res,
 							 gpointer user_data);
-void		      ftp_callback_user			(GObject *source_object,
-							 GAsyncResult *res,
-							 gpointer user_data);
 void		      ftp_callback_pass			(GObject *source_object,
 							 GAsyncResult *res,
 							 gpointer user_data);
@@ -1572,56 +1569,6 @@ ftp_callback_welcome (GObject *source_object,
 			}
 			else
 				protocol_ftp_auth_async (protocol, priv->async_cancellable, ftp_callback_pass);
-		}
-		else {
-			g_simple_async_result_set_from_error (priv->async_result,
-							      error);
-			g_simple_async_result_complete (priv->async_result);
-			g_error_free (error);
-		}
-		ftp_reply_free (reply);
-	}
-	else {
-		g_simple_async_result_set_from_error (priv->async_result,
-						      error);
-		g_simple_async_result_complete (priv->async_result);
-		g_error_free (error);
-	}
-}
-
-void
-ftp_callback_user (GObject *source_object,
-		   GAsyncResult *res,
-		   gpointer user_data)
-{
-	SoupProtocolFTP *protocol;
-	SoupProtocolFTPPrivate *priv;
-	SoupProtocolFTPReply *reply;
-	GError *error = NULL;
-	gchar *msg;
-
-	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));
-	g_warn_if_fail (G_IS_ASYNC_RESULT (res));
-
-	protocol = SOUP_PROTOCOL_FTP (source_object);
-	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	reply = ftp_send_and_recv_finish (protocol, res, &error);
-	if (reply) {
-		if (ftp_check_reply (protocol, reply, &error)) {
-			if (REPLY_IS_POSITIVE_COMPLETION (reply)) {
-				ftp_send_and_recv_async (protocol,
-							 "FEAT",
-							 priv->async_cancellable,
-							 ftp_callback_pass);
-			}
-			if (REPLY_IS_POSITIVE_INTERMEDIATE (reply)) {
-				msg = g_strdup_printf ("PASS %s", priv->uri->password);
-				ftp_send_and_recv_async (protocol,
-							 msg,
-							 priv->async_cancellable,
-							 ftp_callback_pass);
-				g_free (msg);
-			}
 		}
 		else {
 			g_simple_async_result_set_from_error (priv->async_result,
