@@ -95,7 +95,7 @@ static void append_uri_encoded (GString *str, const char *in, const char *extra_
 static char *uri_decoded_copy (const char *str, int length);
 static char *uri_normalized_copy (const char *str, int length, const char *unescape_extra, gboolean fixup);
 
-const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP;
+const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP, *_SOUP_URI_SCHEME_FILE;
 
 static inline const char *
 soup_uri_get_scheme (const char *scheme, int len)
@@ -514,7 +514,7 @@ parts_equal (const char *one, const char *two, gboolean insensitive)
  *
  * Return value: %TRUE or %FALSE
  **/
-gboolean 
+gboolean
 soup_uri_equal (SoupURI *uri1, SoupURI *uri2)
 {
 	if (uri1->scheme != uri2->scheme                         ||

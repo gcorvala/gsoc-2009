@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
-/* 
+/*
  * Copyright 1999-2002 Ximian, Inc.
  */
 
@@ -33,18 +33,19 @@ GType     soup_uri_get_type          (void);
 #define SOUP_URI_SCHEME_HTTP  (_SOUP_URI_SCHEME_HTTP ? _SOUP_URI_SCHEME_HTTP : (_SOUP_URI_SCHEME_HTTP = g_intern_static_string ("http")))
 #define SOUP_URI_SCHEME_HTTPS (_SOUP_URI_SCHEME_HTTPS ? _SOUP_URI_SCHEME_HTTPS : (_SOUP_URI_SCHEME_HTTPS = g_intern_static_string ("https")))
 #define SOUP_URI_SCHEME_FTP (_SOUP_URI_SCHEME_FTP ? _SOUP_URI_SCHEME_FTP : (_SOUP_URI_SCHEME_FTP = g_intern_static_string ("ftp")))
-extern const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP;
+#define SOUP_URI_SCHEME_FILE (_SOUP_URI_SCHEME_FILE ? _SOUP_URI_SCHEME_FILE : (_SOUP_URI_SCHEME_FILE = g_intern_static_string ("file")))
+extern const char *_SOUP_URI_SCHEME_HTTP, *_SOUP_URI_SCHEME_HTTPS, *_SOUP_URI_SCHEME_FTP, *_SOUP_URI_SCHEME_FILE;
 
 SoupURI  *soup_uri_new_with_base         (SoupURI    *base,
 					  const char *uri_string);
 SoupURI  *soup_uri_new                   (const char *uri_string);
 
-char     *soup_uri_to_string             (SoupURI    *uri, 
+char     *soup_uri_to_string             (SoupURI    *uri,
 					  gboolean    just_path_and_query);
 
 SoupURI  *soup_uri_copy                  (SoupURI    *uri);
 
-gboolean  soup_uri_equal                 (SoupURI    *uri1, 
+gboolean  soup_uri_equal                 (SoupURI    *uri1,
 					  SoupURI    *uri2);
 
 void      soup_uri_free                  (SoupURI    *uri);

@@ -91,17 +91,18 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	connections = g_hash_table_lookup (priv->protocols, uri->scheme);
 	if (!connections) {
-		if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+		connections = g_hash_table_new_full (soup_uri_host_hash,
+						     uri_hash_equal,
+						     (GDestroyNotify) soup_uri_free,
+						     g_object_unref);
+		if (uri->scheme == SOUP_URI_SCHEME_FILE)
+			protocol = soup_protocol_file_new ();
+		else if (uri->scheme == SOUP_URI_SCHEME_FTP)
+			protocol = soup_protocol_ftp_new ();
+		else if (uri->scheme == SOUP_URI_SCHEME_HTTP)
 			g_debug ("http");
 		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
 			g_debug ("https");
-		else if (uri->scheme == SOUP_URI_SCHEME_FTP) {
-			connections = g_hash_table_new_full (soup_uri_host_hash,
-							     uri_hash_equal,
-							     (GDestroyNotify) soup_uri_free,
-							     g_object_unref);
-			protocol = soup_protocol_ftp_new ();
-		}
 		else
 			g_debug ("error");
 		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), connections);
@@ -110,12 +111,14 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	else {
 		protocol = g_hash_table_lookup (connections, uri);
 		if (!protocol) {
-			if (uri->scheme == SOUP_URI_SCHEME_HTTP)
+			if (uri->scheme == SOUP_URI_SCHEME_FILE)
+				protocol = soup_protocol_file_new ();
+			else if (uri->scheme == SOUP_URI_SCHEME_FTP)
+				protocol = soup_protocol_ftp_new ();
+			else if (uri->scheme == SOUP_URI_SCHEME_HTTP)
 				g_debug ("http");
 			else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
 				g_debug ("https");
-			else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-				protocol = soup_protocol_ftp_new ();
 			else
 				g_debug ("error");
 			g_hash_table_insert (connections, soup_uri_copy (uri), protocol);

@@ -62,7 +62,7 @@ int
 main (int argc, char **argv)
 {
 	SoupURILoader *loader;
-	SoupURI *uri1, *uri2, *uri3;
+	SoupURI *uri1, *uri2, *uri3, *uri4, *uri5;
 	GError *error = NULL;
 	GInputStream *input;
 	GDataInputStream *data;
@@ -85,6 +85,8 @@ main (int argc, char **argv)
 	uri1 = soup_uri_new ("ftp://anonymous:anonymous@tgftp.nws.noaa.gov/README.TXT");
 	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/about");
 	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/");
+	uri4 = soup_uri_new ("file:///proc/meminfo");
+	uri5 = soup_uri_new ("file:///proc/cpuinfo");
 	/**
 	 * Construct SoupURILoader
 	 **/
@@ -158,6 +160,24 @@ main (int argc, char **argv)
 		}
 		g_object_unref (data);
 	}
+
+	input = soup_uri_loader_load_uri (loader, uri4, NULL, &error);
+	data = g_data_input_stream_new (input);
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	while (buffer != NULL) {
+		g_debug ("[sync] <--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
+	g_object_unref (data);
+
+	input = soup_uri_loader_load_uri (loader, uri5, NULL, &error);
+	data = g_data_input_stream_new (input);
+	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	while (buffer != NULL) {
+		g_debug ("[sync] <--- %s", buffer);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	}
+	g_object_unref (data);
 
 	/**
 	 * Test async

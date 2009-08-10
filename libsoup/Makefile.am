@@ -71,7 +71,6 @@ soup_headers =			\
 	soup-multipart.h     	\
 	soup-portability.h	\
 	soup-protocol.h		\
-	soup-protocol-ftp.h	\
 	soup-proxy-resolver.h	\
 	soup-proxy-uri-resolver.h \
 	soup-server.h		\
@@ -85,8 +84,7 @@ soup_headers =			\
 	soup-uri.h		\
 	soup-uri-loader.h	\
 	soup-value-utils.h	\
-	soup-xmlrpc.h		\
-	ParseFTPList.h
+	soup-xmlrpc.h
 
 libsoupinclude_HEADERS =	\
 	$(soup_headers)		\
@@ -151,6 +149,9 @@ libsoup_2_4_la_SOURCES =		\
 	soup-path-map.h     		\
 	soup-path-map.c     		\
 	soup-protocol.c			\
+	soup-protocol-file.h		\
+	soup-protocol-file.c		\
+	soup-protocol-ftp.h		\
 	soup-protocol-ftp.c		\
 	soup-proxy-resolver.c		\
 	soup-proxy-resolver-static.h	\
@@ -169,6 +170,7 @@ libsoup_2_4_la_SOURCES =		\
 	soup-uri-loader.c		\
 	soup-value-utils.c		\
 	soup-xmlrpc.c			\
+	ParseFTPList.h			\
 	ParseFTPList.c
 
 if BUILD_LIBSOUP_GNOME
