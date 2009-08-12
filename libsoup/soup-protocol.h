@@ -8,7 +8,7 @@ G_BEGIN_DECLS
 
 #define SOUP_TYPE_PROTOCOL            (soup_protocol_get_type ())
 #define SOUP_PROTOCOL(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), SOUP_TYPE_PROTOCOL, SoupProtocol))
-#define SOUP_PROTOCOL_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), SOUP_TYPE_PROTOCOL, SoupProtocol))
+#define SOUP_PROTOCOL_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), SOUP_TYPE_PROTOCOL, SoupProtocolClass))
 #define SOUP_IS_PROTOCOL(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), SOUP_TYPE_PROTOCOL))
 #define SOUP_IS_PROTOCOL_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((obj), SOUP_TYPE_PROTOCOL))
 #define SOUP_PROTOCOL_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), SOUP_TYPE_PROTOCOL, SoupProtocolClass))

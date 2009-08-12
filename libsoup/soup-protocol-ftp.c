@@ -314,7 +314,7 @@ ftp_parse_pasv_reply (SoupProtocolFTP		*protocol,
 	return conn;
 }
 
-gboolean
+static gboolean
 ftp_check_reply (SoupProtocolFTP	 *protocol,
 		 SoupProtocolFTPReply	 *reply,
 		 GError			**error)
@@ -689,7 +689,6 @@ ftp_send_and_recv (SoupProtocolFTP		 *protocol,
 		   GCancellable			 *cancellable,
 		   GError			**error)
 {
-	SoupProtocolFTPPrivate *priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	gboolean success;
 	SoupProtocolFTPReply *reply;
 
@@ -773,7 +772,7 @@ ftp_send_and_recv_finish (SoupProtocolFTP	 *protocol,
  * gchar * protocol_ftp_cwd (SoupProtocolFTP *protocol)
  **/
 
-gboolean
+static gboolean
 protocol_ftp_auth (SoupProtocolFTP	 *protocol,
 		   GError		**error)
 {
@@ -851,7 +850,7 @@ protocol_ftp_auth (SoupProtocolFTP	 *protocol,
 	}
 }
 
-void
+static void
 protocol_ftp_auth_pass_cb (GObject		 *source,
 			   GAsyncResult		 *res,
 			   gpointer		  user_data)
@@ -909,7 +908,7 @@ protocol_ftp_auth_pass_cb (GObject		 *source,
 	}
 }
 
-void
+static void
 protocol_ftp_auth_user_cb (GObject		 *source,
 			   GAsyncResult		 *res,
 			   gpointer		  user_data)
@@ -975,7 +974,7 @@ protocol_ftp_auth_user_cb (GObject		 *source,
 	g_free (msg);
 }
 
-void
+static void
 protocol_ftp_auth_async (SoupProtocolFTP	 *protocol,
 			 GCancellable		 *cancellable,
 			 GAsyncReadyCallback	  callback)
@@ -998,7 +997,7 @@ protocol_ftp_auth_async (SoupProtocolFTP	 *protocol,
 	g_free (msg);
 }
 
-gboolean
+static gboolean
 protocol_ftp_auth_finish (SoupProtocolFTP	 *protocol,
 			  GAsyncResult		 *result,
 			  GError		**error)
@@ -1035,7 +1034,6 @@ protocol_ftp_list_complete (SoupInputStream	 *soup_stream,
 	SoupProtocolFTP *protocol_ftp;
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
-	GError *error = NULL;
 
 	g_debug ("FIXME : need to clean priv->data");
 
@@ -1053,23 +1051,25 @@ protocol_ftp_list_complete (SoupInputStream	 *soup_stream,
 		ftp_reply_free (reply);
 }
 
-gint
-protocol_ftp_file_info_list_compare (gpointer	data,
-				     gchar	*name)
+static gint
+protocol_ftp_file_info_list_compare (gconstpointer	data,
+				     gconstpointer	user_data)
 {
 	GFileInfo *info;
+	gchar *name;
 
 	g_return_val_if_fail (G_IS_FILE_INFO (data), -1);
-	g_return_val_if_fail (name != NULL,-1);
+	g_return_val_if_fail (user_data != NULL,-1);
 
 	info = G_FILE_INFO (data);
+	name = (gchar *) user_data;
 
 	return g_strcmp0 (g_file_info_get_name (info), name);
 }
 
-gint
-protocol_ftp_file_info_list_sort (gpointer	data1,
-				  gpointer	data2)
+static gint
+protocol_ftp_file_info_list_sort (gconstpointer	data1,
+				  gconstpointer	data2)
 {
 	GFileInfo *info1, *info2;
 
@@ -1090,7 +1090,7 @@ protocol_ftp_file_info_list_sort (gpointer	data1,
 					     g_file_info_get_name (info2));
 }
 
-GList *
+static GList *
 protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
 		         GInputStream		*stream)
 {
@@ -1111,7 +1111,7 @@ protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
 	dstream = g_data_input_stream_new (stream);
 	g_data_input_stream_set_newline_type (dstream, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
 
-	while (buffer = g_data_input_stream_read_line (dstream, &len, NULL, &error)) {
+	while ((buffer = g_data_input_stream_read_line (dstream, &len, NULL, &error))) {
 		struct list_result result = { 0, };
 		type = ParseFTPList (buffer, &state, &result);
 		file_info = g_file_info_new();
@@ -1138,7 +1138,7 @@ protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
 	return file_list;
 }
 
-GInputStream *
+static GInputStream *
 protocol_ftp_list (SoupProtocolFTP	 *protocol,
 		   gchar		 *path,
 		   GError		**error)
@@ -1218,7 +1218,7 @@ protocol_ftp_list (SoupProtocolFTP	 *protocol,
 			  G_CALLBACK (protocol_ftp_list_complete), protocol);
 	g_signal_connect (sstream, "stream-closed",
 			  G_CALLBACK (protocol_ftp_list_complete), protocol);
-	file_list = protocol_ftp_list_parse (protocol, G_OBJECT (sstream));
+	file_list = protocol_ftp_list_parse (protocol, G_INPUT_STREAM (sstream));
 	g_object_set (sstream,
 		      "children", file_list,
 		      NULL);
@@ -1233,7 +1233,6 @@ protocol_ftp_retr_complete (SoupInputStream	 *soup_stream,
 	SoupProtocolFTP *protocol_ftp;
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
-	GError *error = NULL;
 
 	g_return_if_fail (SOUP_IS_INPUT_STREAM (soup_stream));
 	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (user_data));
@@ -1253,7 +1252,7 @@ protocol_ftp_retr_complete (SoupInputStream	 *soup_stream,
 		ftp_reply_free (reply);
 }
 
-GInputStream *
+static GInputStream *
 protocol_ftp_retr (SoupProtocolFTP	 *protocol,
 		   gchar		 *path,
 		   GFileInfo		 *info,
@@ -1265,7 +1264,6 @@ protocol_ftp_retr (SoupProtocolFTP	 *protocol,
 	GInputStream *istream;
 	GSocketConnectable *conn;
 	GSocketClient *client;
-	GList *file_list = NULL;
 	gchar *msg;
 
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
@@ -1342,14 +1340,10 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	SoupProtocolFTP *protocol_ftp;
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
-	GInputStream *input_stream;
 	GInputStream *istream;
-	SoupInputStream *soup_stream;
-	GSocketConnectable *conn;
-	gchar *msg, *uri_decode;
-	gboolean is_dir = FALSE;
 	GList *listing = NULL;
 	GFileInfo *info;
+	gchar *parent_dir_path;
 
 	g_debug ("soup_protocol_ftp_load_uri called");
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
@@ -1386,24 +1380,24 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 		return istream;
 	}
 	else {
-		gchar *parent_dir_path = g_strndup (uri->path, g_strrstr (uri->path, "/") - uri->path + 1);
+		parent_dir_path = g_strndup (uri->path, g_strrstr (uri->path, "/") - uri->path + 1);
 		istream = protocol_ftp_list (protocol_ftp, parent_dir_path, NULL);
 		g_free (parent_dir_path);
 		g_object_get (istream,
 			      "file-info", &info,
 			      "children", &listing,
 			      NULL);
-		GList *l = g_list_find_custom (listing,
-					    g_strrstr (uri->path, "/") + 1,
-					    protocol_ftp_file_info_list_compare);
-		if (g_file_info_get_file_type (l->data) == G_FILE_TYPE_DIRECTORY) {
+		listing = g_list_find_custom (listing,
+					      g_strrstr (uri->path, "/") + 1,
+					      protocol_ftp_file_info_list_compare);
+		if (g_file_info_get_file_type (listing->data) == G_FILE_TYPE_DIRECTORY) {
 			g_debug ("directory detected");
 			istream = protocol_ftp_list (protocol_ftp, uri->path, NULL);
 			return istream;
 		}
-		else if (g_file_info_get_file_type (l->data) == G_FILE_TYPE_REGULAR) {
+		else if (g_file_info_get_file_type (listing->data) == G_FILE_TYPE_REGULAR) {
 			g_debug ("file detected");
-			istream = protocol_ftp_retr (protocol_ftp, uri->path, l->data, NULL);
+			istream = protocol_ftp_retr (protocol_ftp, uri->path, listing->data, NULL);
 			return istream;
 		}
 		else {
@@ -1616,7 +1610,6 @@ ftp_callback_pass (GObject *source_object,
 {
 	SoupProtocolFTP *protocol;
 	SoupProtocolFTPPrivate *priv;
-	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 
 	g_warn_if_fail (SOUP_IS_PROTOCOL_FTP (source_object));

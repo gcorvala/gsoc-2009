@@ -38,7 +38,7 @@ soup_uri_loader_class_init (SoupURILoaderClass *klass)
 	gobject_class->finalize = soup_uri_loader_finalize;
 }
 
-gboolean
+static gboolean
 uri_hash_equal (gconstpointer a,
 		gconstpointer b)
 {
@@ -100,7 +100,7 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	if (g_hash_table_lookup (priv->protocol_types, scheme) != NULL)
 		return FALSE;
-	g_hash_table_insert (priv->protocol_types, g_strdup (scheme), type);
+	g_hash_table_insert (priv->protocol_types, g_strdup (scheme), GSIZE_TO_POINTER (type));
 
 	return TRUE;
 }
@@ -114,17 +114,16 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	SoupURILoaderPrivate *priv;
 	GInputStream *input_stream;
 	SoupProtocol *protocol;
-	GHashTable *connections;
 	GType protocol_type;
 
-	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
-	g_return_if_fail (uri != NULL);
+	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), NULL);
+	g_return_val_if_fail (uri != NULL, NULL);
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	protocol = g_hash_table_lookup (priv->protocols, uri);
 	if (protocol == NULL) {
-		protocol_type = g_hash_table_lookup (priv->protocol_types, uri->scheme);
-		if (protocol_type == NULL) {
+		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
+		if (protocol_type == 0) {
 			g_debug ("Protocol not supported : %s", uri->scheme);
 			return NULL;
 		}
@@ -137,12 +136,12 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	return input_stream;
 }
 
-void
+static void
 load_uri_cb (GObject *source_object,
 	     GAsyncResult *res,
 	     gpointer user_data)
 {
-	SoupProtocol *protocol;
+	SoupProtocolFTP *protocol;
 	GSimpleAsyncResult *result;
 	GInputStream *input_stream;
 	GError *error = NULL;
@@ -152,8 +151,8 @@ load_uri_cb (GObject *source_object,
 	g_return_if_fail (G_IS_SIMPLE_ASYNC_RESULT (user_data));
 
 	protocol = SOUP_PROTOCOL_FTP (source_object);
-	result = user_data;
-	input_stream = soup_protocol_load_uri_finish (protocol, res, error);
+	result = G_SIMPLE_ASYNC_RESULT (user_data);
+	input_stream = soup_protocol_load_uri_finish (SOUP_PROTOCOL (protocol), res, &error);
 	if (input_stream) {
 		g_simple_async_result_set_op_res_gpointer (result,
 							   input_stream,
@@ -177,22 +176,21 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 	SoupURILoaderPrivate *priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 	SoupProtocol *protocol;
 	GSimpleAsyncResult *result;
-	GHashTable *connections;
 	GType protocol_type;
 
 	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
 	g_return_if_fail (uri != NULL);
 
-	result = g_simple_async_result_new (loader,
+	result = g_simple_async_result_new (G_OBJECT (loader),
 					    callback,
 					    user_data,
 					    soup_uri_loader_load_uri_async);
 	protocol = g_hash_table_lookup (priv->protocols, uri);
 	if (protocol == NULL) {
-		protocol_type = g_hash_table_lookup (priv->protocol_types, uri->scheme);
-		if (protocol_type == NULL) {
+		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
+		if (protocol_type == 0) {
 			g_debug ("Protocol not supported : %s", uri->scheme);
-			return NULL;
+			return;
 		}
 		protocol = g_object_new (protocol_type, NULL);
 		if (protocol != NULL)
@@ -211,9 +209,11 @@ soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 
 	g_debug ("soup_uri_loader_load_uri_finish finish");
 
-	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
-	g_return_if_fail (G_IS_ASYNC_RESULT (result));
-	g_return_if_fail (g_simple_async_result_is_valid (result, G_OBJECT (loader), soup_uri_loader_load_uri_async));
+	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), NULL);
+	g_return_val_if_fail (G_IS_ASYNC_RESULT (result), NULL);
+	g_return_val_if_fail (g_simple_async_result_is_valid (result,
+							      G_OBJECT (loader),
+							      soup_uri_loader_load_uri_async), NULL);
 
 	simple = G_SIMPLE_ASYNC_RESULT (result);
 	if (g_simple_async_result_propagate_error (simple, error))

@@ -29,7 +29,7 @@ struct _SoupURILoaderClass {
 	/* class members */
 };
 
-GType		 ftp_server_get_type		 (void);
+GType		 soup_uri_loader_get_type		 (void);
 
 SoupURILoader	*soup_uri_loader_new		 (void);
 
