@@ -17,17 +17,16 @@ G_BEGIN_DECLS
 typedef struct _SoupURILoader SoupURILoader;
 typedef struct _SoupURILoaderClass SoupURILoaderClass;
 typedef struct _SoupURILoaderPrivate SoupURILoaderPrivate;
-typedef SoupProtocol * (*SoupProtocolNew) (void);
 
 struct _SoupURILoader {
-  GObject parent;
-  /* < private > */
-  SoupURILoaderPrivate *priv;
+	GObject parent;
+	/* < private > */
+	SoupURILoaderPrivate *priv;
 };
 
 struct _SoupURILoaderClass {
-  GObjectClass parent;
-  /* class members */
+	GObjectClass parent;
+	/* class members */
 };
 
 GType		 ftp_server_get_type		 (void);
@@ -36,7 +35,7 @@ SoupURILoader	*soup_uri_loader_new		 (void);
 
 gboolean	 soup_uri_loader_add_protocol	 (SoupURILoader	 *loader,
 						  gchar		 *scheme,
-						  SoupProtocolNew constructor);
+						  GType		  type);
 
 GInputStream	*soup_uri_loader_load_uri	 (SoupURILoader	 *loader,
 						  SoupURI	 *uri,
