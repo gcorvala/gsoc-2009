@@ -1,12 +1,14 @@
 #include "soup-uri-loader.h"
 #include "soup-protocol.h"
 #include "soup-protocol-ftp.h"
+#include "soup-protocol-file.h"
 
 #define SOUP_URI_LOADER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), SOUP_TYPE_URI_LOADER, SoupURILoaderPrivate))
 
 struct _SoupURILoaderPrivate
 {
-	GHashTable *protocols; //hash table of protocols that contain a hash table of connections
+	GHashTable *protocols; // uri - *SoupProtocol
+	GHashTable *constructors; // scheme - SoupProtocolNew
 };
 
 G_DEFINE_TYPE (SoupURILoader, soup_uri_loader, G_TYPE_OBJECT);
@@ -35,28 +37,6 @@ soup_uri_loader_class_init (SoupURILoaderClass *klass)
 	gobject_class->finalize = soup_uri_loader_finalize;
 }
 
-static void
-soup_uri_loader_init (SoupURILoader *self)
-{
-	SoupURILoaderPrivate *priv;
-
-	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
-
-	priv->protocols = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_hash_table_destroy);
-}
-
-SoupURILoader *
-soup_uri_loader_new (void)
-{
-	SoupURILoader *self;
-
-	g_debug ("soup_uri_loader_new called");
-
-	self = g_object_new (SOUP_TYPE_URI_LOADER, NULL);
-
-	return self;
-}
-
 gboolean
 uri_hash_equal (gconstpointer a,
 		gconstpointer b)
@@ -74,6 +54,57 @@ uri_hash_equal (gconstpointer a,
 	return TRUE;
 }
 
+static void
+soup_uri_loader_init (SoupURILoader *self)
+{
+	SoupURILoaderPrivate *priv;
+
+	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
+
+	priv->protocols = g_hash_table_new_full (soup_uri_host_hash,
+						 uri_hash_equal,
+						 (GDestroyNotify) soup_uri_free,
+						 g_object_unref);
+	priv->constructors = g_hash_table_new_full (g_str_hash,
+						    g_str_equal,
+						    g_free,
+						    NULL);
+	soup_uri_loader_add_protocol (self, "ftp", soup_protocol_ftp_new);
+	soup_uri_loader_add_protocol (self, "file", soup_protocol_file_new);
+}
+
+SoupURILoader *
+soup_uri_loader_new (void)
+{
+	SoupURILoader *self;
+
+	g_debug ("soup_uri_loader_new called");
+
+	self = g_object_new (SOUP_TYPE_URI_LOADER, NULL);
+
+	return self;
+}
+
+gboolean
+soup_uri_loader_add_protocol (SoupURILoader	 *loader,
+			      gchar		 *scheme,
+			      SoupProtocolNew	  constructor)
+{
+	SoupURILoaderPrivate *priv;
+	SoupProtocolNew new;
+
+	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), FALSE);
+	g_return_val_if_fail (scheme != NULL, FALSE);
+	g_return_val_if_fail (constructor != NULL, FALSE);
+
+	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+	new = g_hash_table_lookup (priv->constructors, scheme);
+	if (new != NULL)
+		return FALSE;
+	g_hash_table_insert (priv->constructors, g_strdup (scheme), constructor);
+	return TRUE;
+}
+
 GInputStream*
 soup_uri_loader_load_uri (SoupURILoader	 *loader,
 			  SoupURI	 *uri,
@@ -84,45 +115,22 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	GInputStream *input_stream;
 	SoupProtocol *protocol;
 	GHashTable *connections;
+	SoupProtocolNew constructor;
 
 	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
 	g_return_if_fail (uri != NULL);
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
-	connections = g_hash_table_lookup (priv->protocols, uri->scheme);
-	if (!connections) {
-		connections = g_hash_table_new_full (soup_uri_host_hash,
-						     uri_hash_equal,
-						     (GDestroyNotify) soup_uri_free,
-						     g_object_unref);
-		if (uri->scheme == SOUP_URI_SCHEME_FILE)
-			protocol = soup_protocol_file_new ();
-		else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-			protocol = soup_protocol_ftp_new ();
-		else if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-			g_debug ("http");
-		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-			g_debug ("https");
-		else
-			g_debug ("error");
-		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), connections);
-		g_hash_table_insert (connections, soup_uri_copy (uri), protocol);
-	}
-	else {
-		protocol = g_hash_table_lookup (connections, uri);
-		if (!protocol) {
-			if (uri->scheme == SOUP_URI_SCHEME_FILE)
-				protocol = soup_protocol_file_new ();
-			else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-				protocol = soup_protocol_ftp_new ();
-			else if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-				g_debug ("http");
-			else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-				g_debug ("https");
-			else
-				g_debug ("error");
-			g_hash_table_insert (connections, soup_uri_copy (uri), protocol);
+	protocol = g_hash_table_lookup (priv->protocols, uri);
+	if (protocol == NULL) {
+		constructor = g_hash_table_lookup (priv->constructors, uri->scheme);
+		if (constructor == NULL) {
+			g_debug ("Protocol not supported : %s", uri->scheme);
+			return NULL;
 		}
+		protocol = constructor ();
+		if (protocol != NULL)
+			g_hash_table_insert (priv->protocols, soup_uri_copy (uri), protocol);
 	}
 	input_stream = soup_protocol_load_uri (protocol, uri, cancellable, error);
 
@@ -170,6 +178,7 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 	SoupProtocol *protocol;
 	GSimpleAsyncResult *result;
 	GHashTable *connections;
+	SoupProtocolNew constructor;
 
 	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
 	g_return_if_fail (uri != NULL);
@@ -178,37 +187,15 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 					    callback,
 					    user_data,
 					    soup_uri_loader_load_uri_async);
-	connections = g_hash_table_lookup (priv->protocols, uri->scheme);
-	if (!connections) {
-		if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-			g_debug ("http");
-		else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-			g_debug ("https");
-		else if (uri->scheme == SOUP_URI_SCHEME_FTP) {
-			connections = g_hash_table_new_full (soup_uri_host_hash,
-							     uri_hash_equal,
-							     (GDestroyNotify) soup_uri_free,
-							     g_object_unref);
-			protocol = soup_protocol_ftp_new ();
+	protocol = g_hash_table_lookup (priv->protocols, uri);
+	if (protocol == NULL) {
+		constructor = g_hash_table_lookup (priv->constructors, uri->scheme);
+		if (constructor == NULL) {
+			g_debug ("Protocol not supported : %s", uri->scheme);
+			return NULL;
 		}
-		else
-			g_debug ("error");
-		g_hash_table_insert (priv->protocols, g_strdup (uri->scheme), connections);
-		g_hash_table_insert (connections, soup_uri_copy (uri), protocol);
-	}
-	else {
-		protocol = g_hash_table_lookup (connections, uri);
-		if (!protocol) {
-			if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-				g_debug ("http");
-			else if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-				g_debug ("https");
-			else if (uri->scheme == SOUP_URI_SCHEME_FTP)
-				protocol = soup_protocol_ftp_new ();
-			else
-				g_debug ("error");
-			g_hash_table_insert (connections, soup_uri_copy (uri), protocol);
-		}
+		protocol = constructor ();
+		g_hash_table_insert (priv->protocols, soup_uri_copy (uri), protocol);
 	}
 	soup_protocol_load_uri_async (protocol, uri, cancellable, load_uri_cb, result);
 }

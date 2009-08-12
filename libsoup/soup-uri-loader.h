@@ -3,6 +3,7 @@
 
 #include <gio/gio.h>
 #include "soup-uri.h"
+#include "soup-protocol.h"
 
 G_BEGIN_DECLS
 
@@ -16,6 +17,7 @@ G_BEGIN_DECLS
 typedef struct _SoupURILoader SoupURILoader;
 typedef struct _SoupURILoaderClass SoupURILoaderClass;
 typedef struct _SoupURILoaderPrivate SoupURILoaderPrivate;
+typedef SoupProtocol * (*SoupProtocolNew) (void);
 
 struct _SoupURILoader {
   GObject parent;
@@ -32,6 +34,10 @@ GType		 ftp_server_get_type		 (void);
 
 SoupURILoader	*soup_uri_loader_new		 (void);
 
+gboolean	 soup_uri_loader_add_protocol	 (SoupURILoader	 *loader,
+						  gchar		 *scheme,
+						  SoupProtocolNew constructor);
+
 GInputStream	*soup_uri_loader_load_uri	 (SoupURILoader	 *loader,
 						  SoupURI	 *uri,
 						  GCancellable	 *cancellable,
@@ -46,6 +52,7 @@ void		 soup_uri_loader_load_uri_async	 (SoupURILoader		*loader,
 GInputStream	*soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 						  GAsyncResult	 *result,
 						  GError	**error);
+
 G_END_DECLS
 
 #endif /*SOUP_URI_LOADER_H*/
