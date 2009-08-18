@@ -4,6 +4,7 @@
 #include "ParseFTPList.h"
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 /**
  * TODO:
@@ -1113,22 +1114,33 @@ protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
 
 	while ((buffer = g_data_input_stream_read_line (dstream, &len, NULL, &error))) {
 		struct list_result result = { 0, };
+		GTimeVal tv = { 0, 0 };
 		type = ParseFTPList (buffer, &state, &result);
 		file_info = g_file_info_new();
-		if (result.fe_type == 'f')
+		if (result.fe_type == 'f') {
 			g_file_info_set_file_type (file_info, G_FILE_TYPE_REGULAR);
-		else if (result.fe_type == 'd')
+			g_file_info_set_name (file_info, g_strdup (result.fe_fname));
+		}
+		else if (result.fe_type == 'd') {
 			g_file_info_set_file_type (file_info, G_FILE_TYPE_DIRECTORY);
+			g_file_info_set_name (file_info, g_strdup (result.fe_fname));
+		}
 		else if (result.fe_type == 'l') {
 			g_file_info_set_file_type (file_info, G_FILE_TYPE_SYMBOLIC_LINK);
-			g_file_info_set_is_symlink (file_info, TRUE);
+			g_file_info_set_name (file_info, g_strndup (result.fe_fname,
+								    result.fe_lname - result.fe_fname - 4));
+			g_file_info_set_symlink_target (file_info, g_strdup (result.fe_lname));
 		}
 		else {
-			g_file_info_set_file_type (file_info, G_FILE_TYPE_UNKNOWN);
+			g_object_unref (file_info);
 			continue;
 		}
-		g_file_info_set_name (file_info, g_strdup (result.fe_fname));
 		g_file_info_set_size (file_info, atoi (result.fe_size));
+		if (result.fe_time.tm_year >= 1900)
+			result.fe_time.tm_year -= 1900;
+		tv.tv_sec = mktime (&result.fe_time);
+		if (tv.tv_sec != -1)
+			g_file_info_set_modification_time (file_info, &tv);
 		file_list = g_list_prepend (file_list, file_info);
 	}
 
