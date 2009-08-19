@@ -1,6 +1,4 @@
 #include "libsoup/soup.h"
-#include "libsoup/soup-uri.h"
-#include "libsoup/soup-uri-loader.h"
 
 #include <glib.h>
 #include <gio/gio.h>
