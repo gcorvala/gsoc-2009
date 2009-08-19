@@ -1365,6 +1365,10 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	// TODO : free private before start new job
 	priv->uri = soup_uri_copy (uri);
+	if (priv->uri->user == NULL) {
+		soup_uri_set_user (priv->uri, "anonymous");
+		soup_uri_set_password (priv->uri, "libsoup@example.com");
+	}
 	priv->async_cancellable = cancellable;
 	if (!priv->control) {
 		priv->control = g_socket_client_connect_to_host (g_socket_client_new (),
@@ -1436,6 +1440,10 @@ soup_protocol_ftp_load_uri_async (SoupProtocol		*protocol,
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	// TODO : free private before start new job
 	priv->uri = soup_uri_copy (uri);
+	if (priv->uri->user == NULL) {
+		soup_uri_set_user (priv->uri, "anonymous");
+		soup_uri_set_password (priv->uri, "libsoup@example.com");
+	}
 	priv->async_cancellable = cancellable;
 	priv->async_result = g_simple_async_result_new (G_OBJECT (protocol),
 							callback,
