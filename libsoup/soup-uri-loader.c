@@ -39,23 +39,6 @@ soup_uri_loader_class_init (SoupURILoaderClass *klass)
 	gobject_class->finalize = soup_uri_loader_finalize;
 }
 
-static gboolean
-uri_hash_equal (gconstpointer a,
-		gconstpointer b)
-{
-	const SoupURI *uri_a, *uri_b;
-
-	uri_a = (SoupURI *) a;
-	uri_b = (SoupURI *) b;
-
-	if (!soup_uri_host_equal (uri_a, uri_b) ||
-	    g_strcmp0 (uri_a->user, uri_b->user) ||
-	    g_strcmp0 (uri_a->password, uri_b->password))
-	    return FALSE;
-
-	return TRUE;
-}
-
 static void
 soup_uri_loader_init (SoupURILoader *self)
 {
