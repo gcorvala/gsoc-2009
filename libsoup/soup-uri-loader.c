@@ -5,10 +5,9 @@
 
 #define SOUP_URI_LOADER_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), SOUP_TYPE_URI_LOADER, SoupURILoaderPrivate))
 
-struct _SoupURILoaderPrivate
-{
-	GHashTable *protocols; // uri - *SoupProtocol
+struct _SoupURILoaderPrivate {
 	GHashTable *protocol_types; // scheme - GType
+	GSList *protocols;
 };
 
 G_DEFINE_TYPE (SoupURILoader, soup_uri_loader, G_TYPE_OBJECT);
@@ -22,8 +21,10 @@ soup_uri_loader_finalize (GObject *object)
 	loader = SOUP_URI_LOADER (object);
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 
-	g_hash_table_destroy (priv->protocols);
 	g_hash_table_destroy (priv->protocol_types);
+
+	g_slist_foreach (priv->protocols, (GFunc) g_object_unref, NULL);
+	g_list_free (priv->protocols);
 
 	G_OBJECT_CLASS (soup_uri_loader_parent_class)->finalize (object);
 }
@@ -62,10 +63,7 @@ soup_uri_loader_init (SoupURILoader *self)
 
 	self->priv = priv = SOUP_URI_LOADER_GET_PRIVATE (self);
 
-	priv->protocols = g_hash_table_new_full (soup_uri_host_hash,
-						 uri_hash_equal,
-						 (GDestroyNotify) soup_uri_free,
-						 g_object_unref);
+	priv->protocols = NULL;
 	priv->protocol_types = g_hash_table_new_full (g_str_hash,
 						      g_str_equal,
 						      g_free,
@@ -105,6 +103,16 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 	return TRUE;
 }
 
+static gint
+compare_protocol (gconstpointer a,
+		  gconstpointer b)
+{
+	g_return_val_if_fail (SOUP_IS_PROTOCOL (a), -1);
+	g_return_val_if_fail (b != NULL, -1);
+
+	return !soup_protocol_can_load_uri (SOUP_PROTOCOL (a), (SoupURI *) b);
+}
+
 GInputStream*
 soup_uri_loader_load_uri (SoupURILoader	 *loader,
 			  SoupURI	 *uri,
@@ -113,15 +121,17 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 {
 	SoupURILoaderPrivate *priv;
 	GInputStream *input_stream;
-	SoupProtocol *protocol;
+	SoupProtocol *protocol = NULL;
 	GType protocol_type;
+	GSList *search = NULL;
 
 	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), NULL);
 	g_return_val_if_fail (uri != NULL, NULL);
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
-	protocol = g_hash_table_lookup (priv->protocols, uri);
-	if (protocol == NULL) {
+
+	search = g_slist_find_custom (priv->protocols, uri, compare_protocol);
+	if (search == NULL) {
 		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
 		if (protocol_type == 0) {
 			g_debug ("Protocol not supported : %s", uri->scheme);
@@ -129,8 +139,10 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 		}
 		protocol = g_object_new (protocol_type, NULL);
 		if (protocol != NULL)
-			g_hash_table_insert (priv->protocols, soup_uri_copy (uri), protocol);
+			priv->protocols = g_slist_prepend (priv->protocols, protocol);
 	}
+	else
+		protocol = SOUP_PROTOCOL (search->data);
 	input_stream = soup_protocol_load_uri (protocol, uri, cancellable, error);
 
 	return input_stream;
@@ -177,6 +189,7 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 	SoupProtocol *protocol;
 	GSimpleAsyncResult *result;
 	GType protocol_type;
+	GSList *search = NULL;
 
 	g_return_if_fail (SOUP_IS_URI_LOADER (loader));
 	g_return_if_fail (uri != NULL);
@@ -185,8 +198,8 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 					    callback,
 					    user_data,
 					    soup_uri_loader_load_uri_async);
-	protocol = g_hash_table_lookup (priv->protocols, uri);
-	if (protocol == NULL) {
+	search = g_slist_find_custom (priv->protocols, uri, compare_protocol);
+	if (search == NULL) {
 		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
 		if (protocol_type == 0) {
 			g_debug ("Protocol not supported : %s", uri->scheme);
@@ -194,8 +207,10 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 		}
 		protocol = g_object_new (protocol_type, NULL);
 		if (protocol != NULL)
-			g_hash_table_insert (priv->protocols, soup_uri_copy (uri), protocol);
+			priv->protocols = g_slist_prepend (priv->protocols, protocol);
 	}
+	else
+		protocol = SOUP_PROTOCOL (search->data);
 	soup_protocol_load_uri_async (protocol, uri, cancellable, load_uri_cb, result);
 }
 

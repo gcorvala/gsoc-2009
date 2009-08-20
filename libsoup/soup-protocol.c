@@ -9,6 +9,7 @@ soup_protocol_class_init (SoupProtocolClass *klass)
 	klass->load_uri = NULL;
 	klass->load_uri_async = NULL;
 	klass->load_uri_finish = NULL;
+	klass->can_load_uri = NULL;
 }
 
 static void
@@ -76,4 +77,14 @@ soup_protocol_load_uri_finish (SoupProtocol	 *protocol,
 									    error);
 
 	return input_stream;
+}
+
+gboolean
+soup_protocol_can_load_uri (SoupProtocol		*protocol,
+			    SoupURI			*uri)
+{
+	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), FALSE);
+	g_return_val_if_fail (uri != NULL, FALSE);
+
+	return SOUP_PROTOCOL_GET_CLASS (protocol)->can_load_uri (protocol, uri);
 }

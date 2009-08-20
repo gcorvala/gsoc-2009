@@ -30,6 +30,8 @@ struct _SoupProtocolFTPPrivate
 	GSimpleAsyncResult	*_async_result;
 	GSimpleAsyncResult	*_async_result_2;
 	GAsyncReadyCallback	 _async_callback;
+	/* lock */
+	gboolean		 busy;
 };
 
 typedef enum {
@@ -95,6 +97,10 @@ void		      soup_protocol_ftp_load_uri_async	(SoupProtocol	       *protocol,
 GInputStream	     *soup_protocol_ftp_load_uri_finish (SoupProtocol	       *protocol,
 							 GAsyncResult	       *result,
 							 GError		      **error);
+
+gboolean	      soup_protocol_ftp_can_load_uri    (SoupProtocol	       *protocol,
+							 SoupURI	       *uri);
+
 
 /* communication methods */
 SoupProtocolFTPReply *ftp_receive_reply			(SoupProtocolFTP	 *protocol,
@@ -214,6 +220,7 @@ soup_protocol_ftp_class_init (SoupProtocolFTPClass *klass)
 	protocol_class->load_uri = soup_protocol_ftp_load_uri;
 	protocol_class->load_uri_async = soup_protocol_ftp_load_uri_async;
 	protocol_class->load_uri_finish = soup_protocol_ftp_load_uri_finish;
+	protocol_class->can_load_uri = soup_protocol_ftp_can_load_uri;
 
 	gobject_class->finalize = soup_protocol_ftp_finalize;
 }
@@ -226,6 +233,8 @@ soup_protocol_ftp_init (SoupProtocolFTP *self)
 	g_debug ("soup_protocol_ftp_init called");
 
 	self->priv = priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (self);
+
+	priv->busy = FALSE;
 }
 
 SoupProtocol *
@@ -1016,7 +1025,7 @@ protocol_ftp_auth_finish (SoupProtocolFTP	 *protocol,
 		res = FALSE;
 	else
 		res = g_simple_async_result_get_op_res_gboolean (simple);
-	g_object_unref (priv->_async_result);
+	//g_object_unref (priv->_async_result);
 	priv->_async_result = NULL;
 
 	return res;
@@ -1255,8 +1264,6 @@ protocol_ftp_retr_complete (SoupInputStream	 *soup_stream,
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 	g_signal_handlers_disconnect_by_func (soup_stream, protocol_ftp_retr_complete, protocol_ftp);
 
-	soup_uri_free (priv->uri);
-	priv->uri = NULL;
 	g_object_unref (priv->data);
 	priv->data = NULL;
 	reply = ftp_receive_reply (protocol_ftp, NULL, NULL);
@@ -1822,4 +1829,27 @@ ftp_callback_retr (GObject *source_object,
 		g_error_free (error);
 	}
 
+}
+
+gboolean
+soup_protocol_ftp_can_load_uri (SoupProtocol	       *protocol,
+				SoupURI		       *uri)
+{
+	SoupProtocolFTP *protocol_ftp;
+	SoupProtocolFTPPrivate *priv;
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
+	g_return_val_if_fail (uri != NULL, FALSE);
+
+	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
+
+	if (priv->busy == FALSE &&
+	    uri->scheme == SOUP_URI_SCHEME_FTP &&
+	    soup_uri_host_equal (uri, priv->uri) &&
+	    !g_strcmp0 (uri->user, priv->uri->user) &&
+	    !g_strcmp0 (uri->password, priv->uri->password))
+		return TRUE;
+	else
+		return FALSE;
 }

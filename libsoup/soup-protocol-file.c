@@ -23,6 +23,9 @@ GInputStream	     *soup_protocol_file_load_uri_finish (SoupProtocol	       *prot
 							 GAsyncResult	       *result,
 							 GError		      **error);
 
+gboolean	      soup_protocol_file_can_load_uri    (SoupProtocol	       *protocol,
+							  SoupURI	       *uri);
+
 static void
 soup_protocol_file_class_init (SoupProtocolFileClass *klass)
 {
@@ -32,6 +35,7 @@ soup_protocol_file_class_init (SoupProtocolFileClass *klass)
 	protocol_class->load_uri = soup_protocol_file_load_uri;
 	protocol_class->load_uri_async = soup_protocol_file_load_uri_async;
 	protocol_class->load_uri_finish = soup_protocol_file_load_uri_finish;
+	protocol_class->can_load_uri = soup_protocol_file_can_load_uri;
 }
 
 static void
@@ -124,4 +128,20 @@ soup_protocol_file_load_uri_finish (SoupProtocol  *protocol,
 		return NULL;
 
 	return g_object_ref (g_simple_async_result_get_op_res_gpointer (simple));
+}
+
+gboolean
+soup_protocol_file_can_load_uri (SoupProtocol	*protocol,
+				 SoupURI	*uri)
+{
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FILE (protocol), FALSE);
+	g_return_val_if_fail (uri != NULL, FALSE);
+	if (uri->scheme == SOUP_URI_SCHEME_FILE &&
+	    uri->user == NULL &&
+	    uri->password == NULL &&
+	    uri->host == NULL &&
+	    uri->port == 0)
+		return TRUE;
+	else
+		return FALSE;
 }

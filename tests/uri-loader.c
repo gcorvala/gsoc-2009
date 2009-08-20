@@ -177,6 +177,7 @@ main (int argc, char **argv)
 	}
 	g_object_unref (data);
 
+	g_object_unref (loader);
 	/**
 	 * Test async
 	 **/
