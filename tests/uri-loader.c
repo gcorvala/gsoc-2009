@@ -1,9 +1,10 @@
 #include "libsoup/soup.h"
+#include "libsoup/soup-protocol-ftp.h"
 
 #include <glib.h>
 #include <gio/gio.h>
 
-void
+static void
 callback (GObject *source,
 	  GAsyncResult *res,
 	  gpointer user_data)
@@ -79,10 +80,12 @@ main (int argc, char **argv)
 	 * 1 - URI seems to point on a file -> it's a file
 	 * 2 - URI seems to point on a file -> it's a directory
 	 * 3 - URI seems to point on a directory -> it's a directory
+	 * 4 - File
+	 * 5 - File
 	 **/
-	uri1 = soup_uri_new ("ftp://anonymous:anonymous@tgftp.nws.noaa.gov/README.TXT");
-	uri2 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/about");
-	uri3 = soup_uri_new ("ftp://anonymous:abc@ftp.gnome.org/");
+	uri1 = soup_uri_new ("ftp://tgftp.nws.noaa.gov/README.TXT");
+	uri2 = soup_uri_new ("ftp://ftp.gnome.org/about");
+	uri3 = soup_uri_new ("ftp://ftp.gnome.org/");
 	uri4 = soup_uri_new ("file:///proc/meminfo");
 	uri5 = soup_uri_new ("file:///proc/cpuinfo");
 	/**
@@ -91,57 +94,13 @@ main (int argc, char **argv)
 	loader = soup_uri_loader_new ();
 
 	/**
-	 * Test sync
+	 * Test sync uri 1
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri1, NULL, &error);
-	g_object_get (input,
-		      "file-info", &info,
-		      NULL);
-	if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
-		g_object_get (input,
-			      "children", &file_list,
-			      NULL);
-		g_list_foreach (file_list,
-				display_directory,
-				NULL);
-	}
-	else {
-		data = g_data_input_stream_new (input);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		while (buffer != NULL) {
-			g_debug ("[sync] <--- %s", buffer);
-			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		}
-		g_object_unref (data);
-	}
-
-	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
-	g_object_get (input,
-		      "file-info", &info,
-		      NULL);
-	if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
-		g_object_get (input,
-			      "children", &file_list,
-			      NULL);
-		g_list_foreach (file_list,
-				display_directory,
-				NULL);
-	}
-	else {
-		data = g_data_input_stream_new (input);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		while (buffer != NULL) {
-			g_debug ("[sync] <--- %s", buffer);
-			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		}
-		g_object_unref (data);
-	}
-
-	soup_uri_loader_remove_protocol (loader, "ftp");
-
-	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
-	if (error)
+	if (error) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
+		error = NULL;
+	}
 	else {
 		g_object_get (input,
 			      "file-info", &info,
@@ -164,25 +123,110 @@ main (int argc, char **argv)
 			g_object_unref (data);
 		}
 	}
-	input = soup_uri_loader_load_uri (loader, uri4, NULL, &error);
-	data = g_data_input_stream_new (input);
-	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-	while (buffer != NULL) {
-		g_debug ("[sync] <--- %s", buffer);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-	}
-	g_object_unref (data);
 
-	input = soup_uri_loader_load_uri (loader, uri5, NULL, &error);
-	data = g_data_input_stream_new (input);
-	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-	while (buffer != NULL) {
-		g_debug ("[sync] <--- %s", buffer);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+	soup_uri_loader_remove_protocol (loader, "ftp");
+
+	/**
+	 * Test sync uri2
+	 **/
+	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
+	if (error) {
+		g_warning ("Error detected : %d - %s", error->code, error->message);
+		error = NULL;
 	}
-	g_object_unref (data);
+	else {
+		g_object_get (input,
+			      "file-info", &info,
+			      NULL);
+		if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
+			g_object_get (input,
+				      "children", &file_list,
+				      NULL);
+			g_list_foreach (file_list,
+					display_directory,
+					NULL);
+		}
+		else {
+			data = g_data_input_stream_new (input);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			while (buffer != NULL) {
+				g_debug ("[sync] <--- %s", buffer);
+				buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			}
+			g_object_unref (data);
+		}
+	}
+
+	soup_uri_loader_add_protocol (loader, "ftp", SOUP_TYPE_PROTOCOL_FTP);
+	/**
+	 * Test sync uri3
+	 **/
+	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
+	if (error) {
+		g_warning ("Error detected : %d - %s", error->code, error->message);
+		error = NULL;
+	}
+	else {
+		g_object_get (input,
+			      "file-info", &info,
+			      NULL);
+		if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
+			g_object_get (input,
+				      "children", &file_list,
+				      NULL);
+			g_list_foreach (file_list,
+					display_directory,
+					NULL);
+		}
+		else {
+			data = g_data_input_stream_new (input);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			while (buffer != NULL) {
+				g_debug ("[sync] <--- %s", buffer);
+				buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			}
+			g_object_unref (data);
+		}
+	}
+
+	/**
+	 * Test sync uri4
+	 **/
+	input = soup_uri_loader_load_uri (loader, uri4, NULL, &error);
+	if (error) {
+		g_warning ("Error detected : %d - %s", error->code, error->message);
+		error = NULL;
+	}
+	else {
+		data = g_data_input_stream_new (input);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		while (buffer != NULL) {
+			g_debug ("[sync] <--- %s", buffer);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		}
+		g_object_unref (data);
+	}
+
+	/**
+	 * Test sync uri5
+	 **/
+	input = soup_uri_loader_load_uri (loader, uri5, NULL, &error);
+	if (error) {
+		g_warning ("Error detected : %d - %s", error->code, error->message);
+		error = NULL;
+	}
+	else {
+		data = g_data_input_stream_new (input);
+		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		while (buffer != NULL) {
+			g_debug ("[sync] <--- %s", buffer);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		}
+		g_object_unref (data);
+	}
 
 	g_object_unref (loader);
+
 	/**
 	 * Test async
 	 **/
