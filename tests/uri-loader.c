@@ -137,28 +137,33 @@ main (int argc, char **argv)
 		g_object_unref (data);
 	}
 
-	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
-	g_object_get (input,
-		      "file-info", &info,
-		      NULL);
-	if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
-		g_object_get (input,
-			      "children", &file_list,
-			      NULL);
-		g_list_foreach (file_list,
-				display_directory,
-				NULL);
-	}
-	else {
-		data = g_data_input_stream_new (input);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		while (buffer != NULL) {
-			g_debug ("[sync] <--- %s", buffer);
-			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		}
-		g_object_unref (data);
-	}
+	soup_uri_loader_remove_protocol (loader, "ftp");
 
+	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
+	if (error)
+		g_warning ("Error detected : %d - %s", error->code, error->message);
+	else {
+		g_object_get (input,
+			      "file-info", &info,
+			      NULL);
+		if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
+			g_object_get (input,
+				      "children", &file_list,
+				      NULL);
+			g_list_foreach (file_list,
+					display_directory,
+					NULL);
+		}
+		else {
+			data = g_data_input_stream_new (input);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			while (buffer != NULL) {
+				g_debug ("[sync] <--- %s", buffer);
+				buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			}
+			g_object_unref (data);
+		}
+	}
 	input = soup_uri_loader_load_uri (loader, uri4, NULL, &error);
 	data = g_data_input_stream_new (input);
 	buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);

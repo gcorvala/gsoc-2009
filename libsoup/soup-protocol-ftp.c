@@ -185,6 +185,7 @@ soup_protocol_ftp_finalize (GObject *object)
 {
 	SoupProtocolFTP *ftp;
 	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPReply *reply;
 
 	ftp = SOUP_PROTOCOL_FTP (object);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (ftp);
@@ -192,6 +193,8 @@ soup_protocol_ftp_finalize (GObject *object)
 	if (priv->uri)
 		soup_uri_free (priv->uri);
 	ftp_send_command (ftp, "QUIT", NULL, NULL);
+	reply = ftp_receive_reply (ftp, NULL, NULL);
+	ftp_reply_free (reply);
 	if (priv->control)
 		g_object_unref (priv->control);
 	if (priv->data)

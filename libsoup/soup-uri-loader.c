@@ -86,6 +86,45 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 	return TRUE;
 }
 
+gboolean
+soup_uri_loader_remove_protocol (SoupURILoader	*loader,
+				 gchar		*scheme)
+{
+	SoupURILoaderPrivate *priv;
+	GType protocol_type;
+	GSList *tmp, *prev = NULL;
+
+	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), FALSE);
+	g_return_val_if_fail (scheme != NULL, FALSE);
+
+	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
+
+	protocol_type = g_hash_table_lookup (priv->protocol_types, scheme);
+	if (protocol_type == NULL)
+		return FALSE;
+	tmp = priv->protocols;
+	while (tmp) {
+		if (G_TYPE_CHECK_INSTANCE_TYPE (tmp->data, protocol_type)) {
+			if (prev)
+				prev->next = tmp->next;
+			else
+				priv->protocols = tmp->next;
+			g_object_unref (tmp->data);
+			g_slist_free_1 (tmp);
+			if (prev)
+				tmp = prev->next;
+			else
+				tmp = priv->protocols;
+		}
+		else {
+			prev = tmp;
+			tmp = prev->next;
+		}
+	}
+
+	return g_hash_table_remove (priv->protocol_types, scheme);
+}
+
 static gint
 compare_protocol (gconstpointer a,
 		  gconstpointer b)
@@ -117,7 +156,11 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 	if (search == NULL) {
 		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
 		if (protocol_type == 0) {
-			g_debug ("Protocol not supported : %s", uri->scheme);
+			g_set_error (error,
+				     G_IO_ERROR,
+				     G_IO_ERROR_NOT_SUPPORTED,
+				     "Protocol not supported : %s",
+				     uri->scheme);
 			return NULL;
 		}
 		protocol = g_object_new (protocol_type, NULL);

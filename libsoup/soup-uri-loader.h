@@ -37,6 +37,9 @@ gboolean	 soup_uri_loader_add_protocol	 (SoupURILoader	 *loader,
 						  gchar		 *scheme,
 						  GType		  type);
 
+gboolean	 soup_uri_loader_remove_protocol (SoupURILoader  *loader,
+						  gchar		 *scheme);
+
 GInputStream	*soup_uri_loader_load_uri	 (SoupURILoader	 *loader,
 						  SoupURI	 *uri,
 						  GCancellable	 *cancellable,
