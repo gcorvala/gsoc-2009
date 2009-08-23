@@ -86,7 +86,7 @@ main (int argc, char **argv)
 	uri1 = soup_uri_new ("ftp://tgftp.nws.noaa.gov/README.TXT");
 	uri2 = soup_uri_new ("ftp://ftp.gnome.org/about");
 	uri3 = soup_uri_new ("ftp://ftp.gnome.org/");
-	uri4 = soup_uri_new ("file:///proc/meminfo");
+	uri4 = soup_uri_new ("file:///proc/");
 	uri5 = soup_uri_new ("file:///proc/cpuinfo");
 	/**
 	 * Construct SoupURILoader
@@ -97,7 +97,7 @@ main (int argc, char **argv)
 	 * Test sync uri 1
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri1, NULL, &error);
-	if (error) {
+	if (input == NULL) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
 		error = NULL;
 	}
@@ -130,7 +130,7 @@ main (int argc, char **argv)
 	 * Test sync uri2
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri2, NULL, &error);
-	if (error) {
+	if (input == NULL) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
 		error = NULL;
 	}
@@ -162,7 +162,7 @@ main (int argc, char **argv)
 	 * Test sync uri3
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri3, NULL, &error);
-	if (error) {
+	if (input == NULL) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
 		error = NULL;
 	}
@@ -193,36 +193,62 @@ main (int argc, char **argv)
 	 * Test sync uri4
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri4, NULL, &error);
-	if (error) {
+	if (input == NULL) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
 		error = NULL;
 	}
 	else {
-		data = g_data_input_stream_new (input);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		while (buffer != NULL) {
-			g_debug ("[sync] <--- %s", buffer);
-			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		g_object_get (input,
+			      "file-info", &info,
+			      NULL);
+		if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
+			g_object_get (input,
+				      "children", &file_list,
+				      NULL);
+			g_list_foreach (file_list,
+					display_directory,
+					NULL);
 		}
-		g_object_unref (data);
+		else {
+			data = g_data_input_stream_new (input);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			while (buffer != NULL) {
+				g_debug ("[sync] <--- %s", buffer);
+				buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			}
+			g_object_unref (data);
+		}
 	}
 
 	/**
 	 * Test sync uri5
 	 **/
 	input = soup_uri_loader_load_uri (loader, uri5, NULL, &error);
-	if (error) {
+	if (input == NULL) {
 		g_warning ("Error detected : %d - %s", error->code, error->message);
 		error = NULL;
 	}
 	else {
-		data = g_data_input_stream_new (input);
-		buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
-		while (buffer != NULL) {
-			g_debug ("[sync] <--- %s", buffer);
-			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+		g_object_get (input,
+			      "file-info", &info,
+			      NULL);
+		if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY) {
+			g_object_get (input,
+				      "children", &file_list,
+				      NULL);
+			g_list_foreach (file_list,
+					display_directory,
+					NULL);
 		}
-		g_object_unref (data);
+		else {
+			data = g_data_input_stream_new (input);
+			buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			while (buffer != NULL) {
+				g_debug ("[sync] <--- %s", buffer);
+				buffer = g_data_input_stream_read_line (data, &len, NULL, NULL);
+			}
+			g_object_unref (data);
+		}
 	}
 
 	g_object_unref (loader);

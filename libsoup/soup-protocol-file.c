@@ -5,6 +5,7 @@
 #endif
 
 #include "soup-protocol-file.h"
+#include "soup-input-stream.h"
 
 G_DEFINE_TYPE (SoupProtocolFile, soup_protocol_file, SOUP_TYPE_PROTOCOL);
 
@@ -49,6 +50,30 @@ soup_protocol_file_new (void)
 	return g_object_new (SOUP_TYPE_PROTOCOL_FILE, NULL);
 }
 
+static gint
+protocol_file_info_list_sort (gconstpointer	data1,
+			      gconstpointer	data2)
+{
+	// FIXME : This code is duplicated (see protocol_ftp)
+	GFileInfo *info1, *info2;
+
+	g_return_val_if_fail (G_IS_FILE_INFO (data1), -1);
+	g_return_val_if_fail (G_IS_FILE_INFO (data2), -1);
+
+	info1 = G_FILE_INFO (data1);
+	info2 = G_FILE_INFO (data2);
+
+	if (g_file_info_get_file_type (info1) == G_FILE_TYPE_DIRECTORY &&
+	    g_file_info_get_file_type (info2) != G_FILE_TYPE_DIRECTORY)
+		return -1;
+	else if (g_file_info_get_file_type (info1) != G_FILE_TYPE_DIRECTORY &&
+		 g_file_info_get_file_type (info2) == G_FILE_TYPE_DIRECTORY)
+		return 1;
+	else
+		return g_ascii_strcasecmp (g_file_info_get_name (info1),
+					     g_file_info_get_name (info2));
+}
+
 GInputStream *
 soup_protocol_file_load_uri (SoupProtocol  *protocol,
 			     SoupURI       *uri,
@@ -57,15 +82,59 @@ soup_protocol_file_load_uri (SoupProtocol  *protocol,
 {
 	char *uristr;
 	GFile *file;
-	GFileInputStream *stream;
+	GInputStream *stream;
+	SoupInputStream *sstream;
+	GFileInfo *file_info, *children_info;
+	GFileEnumerator *enumerator;
+	GList *children = NULL;
 
 	uristr = soup_uri_to_string (uri, FALSE);
 	file = g_file_new_for_uri (uristr);
 	g_free (uristr);
-
-	stream = g_file_read (file, cancellable, error);
+	file_info = g_file_query_info (file,
+				       "*",
+				       G_FILE_QUERY_INFO_NONE,
+				       cancellable,
+				       error);
+	if (file_info == NULL) {
+		g_object_unref (file);
+		return NULL;
+	}
+	if (g_file_info_get_file_type (file_info) == G_FILE_TYPE_DIRECTORY) {
+		enumerator = g_file_enumerate_children (file,
+							"*",
+							G_FILE_QUERY_INFO_NONE,
+							cancellable,
+							error);
+		if (enumerator == NULL) {
+			g_object_unref (file);
+			g_object_unref (file_info);
+			return NULL;
+		}
+		while ((children_info = g_file_enumerator_next_file (enumerator, cancellable, error)))
+			children = g_list_prepend (children, children_info);
+		if (*error != NULL) {
+			g_object_unref (file);
+			g_object_unref (file_info);
+			g_object_unref (enumerator);
+			g_list_foreach (children, (GFunc) g_object_unref, NULL);
+			return NULL;
+		}
+		children = g_list_sort (children, protocol_file_info_list_sort);
+		stream = G_INPUT_STREAM (g_memory_input_stream_new ());
+	}
+	else {
+		stream = G_INPUT_STREAM (g_file_read (file, cancellable, error));
+		if (stream == NULL) {
+			g_object_unref (file);
+			g_object_unref (file_info);
+			return NULL;
+		}
+	}
+	sstream = soup_input_stream_new (stream, file_info, children);
 	g_object_unref (file);
-	return G_INPUT_STREAM (stream);
+
+	return G_INPUT_STREAM (sstream);
 }
 
 static void

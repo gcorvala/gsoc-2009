@@ -1081,9 +1081,10 @@ protocol_ftp_file_info_list_compare (gconstpointer	data,
 }
 
 static gint
-protocol_ftp_file_info_list_sort (gconstpointer	data1,
-				  gconstpointer	data2)
+protocol_ftp_info_list_sort (gconstpointer	data1,
+			     gconstpointer	data2)
 {
+	// FIXME : This code is duplicated (see protocol_file)
 	GFileInfo *info1, *info2;
 
 	g_return_val_if_fail (G_IS_FILE_INFO (data1), -1);
@@ -1157,7 +1158,7 @@ protocol_ftp_list_parse (SoupProtocolFTP	*protocol,
 	}
 
 	g_object_unref (dstream);
-	file_list = g_list_sort (file_list, protocol_ftp_file_info_list_sort);
+	file_list = g_list_sort (file_list, protocol_ftp_info_list_sort);
 
 	return file_list;
 }
