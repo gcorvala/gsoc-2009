@@ -92,7 +92,7 @@ soup_protocol_file_load_uri (SoupProtocol  *protocol,
 	file = g_file_new_for_uri (uristr);
 	g_free (uristr);
 	file_info = g_file_query_info (file,
-				       "*",
+				       "standard::*",
 				       G_FILE_QUERY_INFO_NONE,
 				       cancellable,
 				       error);
@@ -102,21 +102,20 @@ soup_protocol_file_load_uri (SoupProtocol  *protocol,
 	}
 	if (g_file_info_get_file_type (file_info) == G_FILE_TYPE_DIRECTORY) {
 		enumerator = g_file_enumerate_children (file,
-							"*",
+							"standard::*",
 							G_FILE_QUERY_INFO_NONE,
 							cancellable,
 							error);
+		g_object_unref (file);
 		if (enumerator == NULL) {
-			g_object_unref (file);
 			g_object_unref (file_info);
 			return NULL;
 		}
 		while ((children_info = g_file_enumerator_next_file (enumerator, cancellable, error)))
 			children = g_list_prepend (children, children_info);
+		g_object_unref (enumerator);
 		if (*error != NULL) {
-			g_object_unref (file);
 			g_object_unref (file_info);
-			g_object_unref (enumerator);
 			g_list_foreach (children, (GFunc) g_object_unref, NULL);
 			return NULL;
 		}
