@@ -24,7 +24,7 @@ soup_uri_loader_finalize (GObject *object)
 	g_hash_table_destroy (priv->protocol_types);
 
 	g_slist_foreach (priv->protocols, (GFunc) g_object_unref, NULL);
-	g_list_free (priv->protocols);
+	g_slist_free (priv->protocols);
 
 	G_OBJECT_CLASS (soup_uri_loader_parent_class)->finalize (object);
 }
@@ -99,8 +99,8 @@ soup_uri_loader_remove_protocol (SoupURILoader	*loader,
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
 
-	protocol_type = g_hash_table_lookup (priv->protocol_types, scheme);
-	if (protocol_type == NULL)
+	protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, scheme));
+	if (protocol_type == 0)
 		return FALSE;
 	tmp = priv->protocols;
 	while (tmp) {
