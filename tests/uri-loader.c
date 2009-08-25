@@ -21,7 +21,7 @@ callback (GObject *source,
 	g_warn_if_fail (SOUP_IS_URI_LOADER (source));
 
 	loader = SOUP_URI_LOADER (source);
-	input = soup_uri_loader_load_uri_finish (source, res, &error);
+	input = soup_uri_loader_load_uri_finish (loader, res, &error);
 
 	if (input) {
 		data = g_data_input_stream_new (input);
@@ -39,10 +39,9 @@ callback (GObject *source,
 		g_debug ("error detected : [%u] %s", error->code, error->message);
 	}
 	g_object_unref (loader);
-	exit (0);
 }
 
-void
+static void
 display_directory (gpointer data,
 		   gpointer user_data)
 {
@@ -51,7 +50,7 @@ display_directory (gpointer data,
 	g_return_if_fail (G_IS_FILE_INFO (data));
 
 	info = G_FILE_INFO (data);
-	g_debug ("[%c] %25s %60u Bytes",
+	g_debug ("[%c] %25s %60" G_GOFFSET_FORMAT " Bytes",
 		 g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY ? 'd' : 'f',
 		 g_file_info_get_name (info),
 		 g_file_info_get_size (info));
@@ -67,7 +66,6 @@ main (int argc, char **argv)
 	GDataInputStream *data;
 	gchar *buffer;
 	gsize len;
-	gssize count;
 	GFileInfo *info;
 	GList *file_list = NULL;
 
