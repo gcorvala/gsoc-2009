@@ -83,6 +83,8 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 		return FALSE;
 	g_hash_table_insert (priv->protocol_types, g_strdup (scheme), GSIZE_TO_POINTER (type));
 
+	g_debug ("Protocol added : %s", scheme);
+
 	return TRUE;
 }
 
@@ -121,6 +123,8 @@ soup_uri_loader_remove_protocol (SoupURILoader	*loader,
 			tmp = prev->next;
 		}
 	}
+
+	g_debug ("Protocol removed : %s", scheme);
 
 	return g_hash_table_remove (priv->protocol_types, scheme);
 }

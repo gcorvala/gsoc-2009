@@ -16,11 +16,15 @@
 struct _SoupProtocolFTPPrivate
 {
 	SoupURI			*uri;
+
 	guint16			 features;
+
 	GSocketConnection	*control;	// not needed but, if unref, it close control_input & control_output streams
 	GDataInputStream	*control_input;
 	GOutputStream		*control_output;
 	GSocketConnection	*data;		// not needed but, if unref, it close input returned to caller
+
+	gchar			*current_path;
 
 	/* main async call (load_uri_async) */
 	GCancellable		*async_cancellable;
@@ -183,18 +187,15 @@ SoupProtocolFTPReply *ftp_reply_copy			(SoupProtocolFTPReply *reply);
 static void
 soup_protocol_ftp_finalize (GObject *object)
 {
+	// TODO : close correctly the connection (QUIT)
 	SoupProtocolFTP *ftp;
 	SoupProtocolFTPPrivate *priv;
-	SoupProtocolFTPReply *reply;
 
 	ftp = SOUP_PROTOCOL_FTP (object);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (ftp);
 
 	if (priv->uri)
 		soup_uri_free (priv->uri);
-	ftp_send_command (ftp, "QUIT", NULL, NULL);
-	reply = ftp_receive_reply (ftp, NULL, NULL);
-	ftp_reply_free (reply);
 	if (priv->control)
 		g_object_unref (priv->control);
 	if (priv->data)
@@ -796,12 +797,16 @@ protocol_ftp_auth (SoupProtocolFTP	 *protocol,
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
 
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-	msg = g_strdup_printf ("USER %s", priv->uri->user);
+	if (priv->uri->user == NULL)
+		msg = "USER anonymous";
+	else
+		msg = g_strdup_printf ("USER %s", priv->uri->user);
 	reply = ftp_send_and_recv (protocol,
 				   msg,
 				   priv->async_cancellable,
 				   error);
-	g_free (msg);
+	if (priv->uri->user != NULL)
+		g_free (msg);
 	if (!reply)
 		return FALSE;
 	if (!ftp_check_reply (protocol, reply, error)) {
@@ -829,12 +834,16 @@ protocol_ftp_auth (SoupProtocolFTP	 *protocol,
 		return FALSE;
 	}
 	ftp_reply_free (reply);
-	msg = g_strdup_printf ("PASS %s", priv->uri->password);
+	if (priv->uri->user == NULL)
+		msg = "PASS libsoup@example.com";
+	else
+		msg = g_strdup_printf ("PASS %s", priv->uri->password);
 	reply = ftp_send_and_recv (protocol,
 				   msg,
 				   priv->async_cancellable,
 				   error);
-	g_free (msg);
+	if (priv->uri->user != NULL)
+		g_free (msg);
 	if (!reply)
 		return FALSE;
 	if (!ftp_check_reply (protocol, reply, error)) {
@@ -1212,7 +1221,7 @@ protocol_ftp_list (SoupProtocolFTP	 *protocol,
 	g_object_unref (conn);
 	if (!priv->data)
 		return NULL;
-	msg = g_strdup_printf ("LIST .%s", path);
+	msg = g_strdup_printf ("LIST %s", path);
 	reply = ftp_send_and_recv (protocol,
 				   msg,
 				   priv->async_cancellable,
@@ -1354,6 +1363,38 @@ protocol_ftp_retr (SoupProtocolFTP	 *protocol,
 	return G_INPUT_STREAM (sstream);
 }
 
+static gchar *
+protocol_ftp_pwd (SoupProtocolFTP *protocol, GError **error)
+{
+	SoupProtocolFTPPrivate *priv;
+	SoupProtocolFTPReply *reply;
+	gchar *current_path;
+
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
+
+	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
+
+	reply = ftp_send_and_recv (protocol, "PWD", priv->async_cancellable, error);
+	if (reply == NULL)
+		return NULL;
+	else if (!ftp_check_reply (protocol, reply, error))
+		return NULL;
+	else if (reply->code != 257) {
+		g_set_error (error,
+			     G_IO_ERROR,
+			     G_IO_ERROR_NOT_SUPPORTED,
+			     "ProtocolFTP : PWD command get unexpected reply code : %u - %s",
+			     reply->code,
+			     reply->message->str);
+		ftp_reply_free (reply);
+		return NULL;
+	}
+	current_path = g_strndup (reply->message->str + 1,
+				  g_strrstr (reply->message->str , "\"") - reply->message->str - 1);
+
+	return current_path;
+}
+
 GInputStream *
 soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    SoupURI			*uri,
@@ -1374,12 +1415,8 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 
 	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
-	// TODO : free private before start new job
+
 	priv->uri = soup_uri_copy (uri);
-	if (priv->uri->user == NULL) {
-		soup_uri_set_user (priv->uri, "anonymous");
-		soup_uri_set_password (priv->uri, "libsoup@example.com");
-	}
 	priv->async_cancellable = cancellable;
 	if (!priv->control) {
 		priv->control = g_socket_client_connect_to_host (g_socket_client_new (),
@@ -1389,8 +1426,6 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 								 error);
 		if (!priv->control)
 			return NULL;
-	}
-	if (!priv->control_input && !priv->control_output) {
 		priv->control_input = g_data_input_stream_new (g_io_stream_get_input_stream (G_IO_STREAM (priv->control)));
 		g_data_input_stream_set_newline_type (priv->control_input, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
 		priv->control_output = g_io_stream_get_output_stream (G_IO_STREAM (priv->control));
@@ -1401,6 +1436,10 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			return NULL;
 	}
 	// TODO : check errors returned by protocol_ftp_list and retr
+	g_debug ("Path : %s", uri->path);
+	priv->current_path = protocol_ftp_pwd (protocol_ftp, error);
+	if (priv->current_path == NULL)
+		return NULL;
 	if (g_str_has_suffix (uri->path, "/")) {
 		g_debug ("directory detected");
 		istream = protocol_ftp_list (protocol_ftp, uri->path, NULL);
@@ -1847,7 +1886,6 @@ soup_protocol_ftp_can_load_uri (SoupProtocol	       *protocol,
 
 	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
-
 	if (priv->busy == FALSE &&
 	    uri->scheme == SOUP_URI_SCHEME_FTP &&
 	    soup_uri_host_equal (uri, priv->uri) &&

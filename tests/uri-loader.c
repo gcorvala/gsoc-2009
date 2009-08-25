@@ -60,7 +60,7 @@ int
 main (int argc, char **argv)
 {
 	SoupURILoader *loader;
-	SoupURI *uri1, *uri2, *uri3, *uri4, *uri5;
+	SoupURI *uri1, *uri2, *uri3, *uri4, *uri5, *uri6, *uri7, *uri8;
 	GError *error = NULL;
 	GInputStream *input;
 	GDataInputStream *data;
@@ -81,11 +81,14 @@ main (int argc, char **argv)
 	 * 4 - File
 	 * 5 - File
 	 **/
-	uri1 = soup_uri_new ("ftp://tgftp.nws.noaa.gov/README.TXT");
-	uri2 = soup_uri_new ("ftp://ftp.gnome.org/about");
-	uri3 = soup_uri_new ("ftp://ftp.gnome.org/");
-	uri4 = soup_uri_new ("file:///proc/");
-	uri5 = soup_uri_new ("file:///proc/cpuinfo");
+	uri1 = soup_uri_new ("ftp://ftp.gnome.org/about");
+	uri2 = soup_uri_new ("ftp://localhost/");
+	uri3 = soup_uri_new ("ftp://localhost/dir_1");
+	uri4 = soup_uri_new ("ftp://localhost/dir_2/");
+	uri5 = soup_uri_new ("ftp://localhost/dir_3");
+	uri6 = soup_uri_new ("ftp://localhost/file_1.txt");
+	uri7 = soup_uri_new ("ftp://localhost/file_2.tx");
+	uri8 = soup_uri_new ("ftp://localhost/file_3.txt/");
 	/**
 	 * Construct SoupURILoader
 	 **/
@@ -156,6 +159,7 @@ main (int argc, char **argv)
 	}
 
 	soup_uri_loader_add_protocol (loader, "ftp", SOUP_TYPE_PROTOCOL_FTP);
+
 	/**
 	 * Test sync uri3
 	 **/
