@@ -251,6 +251,81 @@ soup_protocol_ftp_new (void)
 	return SOUP_PROTOCOL (self);
 }
 
+static gboolean
+ftp_check_reply (SoupProtocolFTP	 *protocol,
+		 SoupProtocolFTPReply	 *reply,
+		 GError			**error)
+{
+	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
+	g_return_val_if_fail (reply != NULL, FALSE);
+
+	if (REPLY_IS_POSITIVE_PRELIMINARY (reply) ||
+	    REPLY_IS_POSITIVE_COMPLETION (reply) ||
+	    REPLY_IS_POSITIVE_INTERMEDIATE (reply))
+		return TRUE;
+	else if (REPLY_IS_NEGATIVE_TRANSIENT (reply)) {
+		if (REPLY_IS_ABOUT_CONNECTION (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Connection : try again later");
+		}
+		else if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "File system : try again later");
+		}
+		else {
+			g_set_error (error,
+				     SOUP_PROTOCOL_FTP_ERROR,
+				     0,
+				     "Unknow : try again later (%u - %s)",
+				     reply->code,
+				     reply->message->str);
+		}
+		return FALSE;
+	}
+	else if (REPLY_IS_NEGATIVE_PERMANENT (reply)) {
+		if (REPLY_IS_ABOUT_SYNTAX (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Syntax : command failed");
+		}
+		if (REPLY_IS_ABOUT_AUTHENTICATION (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "Authentication : login failed (incorrect username or password)");
+		}
+		if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
+			g_set_error_literal (error,
+					     SOUP_PROTOCOL_FTP_ERROR,
+					     0,
+					     "File system : file action failed (invalid path or no access allowed)");
+		}
+		else {
+			g_set_error (error,
+				     G_IO_ERROR,
+				     G_IO_ERROR_FAILED,
+				     "Unknow : ftp fatal error (%u - %s)",
+				     reply->code,
+				     reply->message->str);
+		}
+		return FALSE;
+	}
+	else {
+		g_set_error (error,
+			     SOUP_PROTOCOL_FTP_ERROR,
+			     0,
+			     "Unknown : error detected (%u - %s)",
+			     reply->code,
+			     reply->message->str);
+		return FALSE;
+	}
+}
+
 gboolean
 ftp_parse_feat_reply (SoupProtocolFTP		*protocol,
 		      SoupProtocolFTPReply	*reply)
@@ -328,81 +403,28 @@ ftp_parse_pasv_reply (SoupProtocolFTP		*protocol,
 	return conn;
 }
 
-static gboolean
-ftp_check_reply (SoupProtocolFTP	 *protocol,
-		 SoupProtocolFTPReply	 *reply,
-		 GError			**error)
+static gchar *
+ftp_parse_pwd_reply (SoupProtocolFTP		 *protocol,
+		     SoupProtocolFTPReply	 *reply,
+		     GError			**error)
 {
-	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), FALSE);
-	g_return_val_if_fail (reply != NULL, FALSE);
+	gchar *current_path;
 
-	if (REPLY_IS_POSITIVE_PRELIMINARY (reply) ||
-	    REPLY_IS_POSITIVE_COMPLETION (reply) ||
-	    REPLY_IS_POSITIVE_INTERMEDIATE (reply))
-		return TRUE;
-	else if (REPLY_IS_NEGATIVE_TRANSIENT (reply)) {
-		if (REPLY_IS_ABOUT_CONNECTION (reply)) {
-			g_set_error_literal (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     0,
-					     "Connection : try again later");
-		}
-		else if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
-			g_set_error_literal (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     0,
-					     "File system : try again later");
-		}
-		else {
-			g_set_error (error,
-				     SOUP_PROTOCOL_FTP_ERROR,
-				     0,
-				     "Unknow : try again later (%u - %s)",
-				     reply->code,
-				     reply->message->str);
-		}
-		return FALSE;
-	}
-	else if (REPLY_IS_NEGATIVE_PERMANENT (reply)) {
-		if (REPLY_IS_ABOUT_SYNTAX (reply)) {
-			g_set_error_literal (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     0,
-					     "Syntax : command failed");
-		}
-		if (REPLY_IS_ABOUT_AUTHENTICATION (reply)) {
-			g_set_error_literal (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     0,
-					     "Authentication : login failed (incorrect username or password)");
-		}
-		if (REPLY_IS_ABOUT_FILE_SYSTEM (reply)) {
-			g_set_error_literal (error,
-					     SOUP_PROTOCOL_FTP_ERROR,
-					     0,
-					     "File system : file action failed (invalid path or no access allowed)");
-		}
-		else {
-			g_set_error (error,
-				     SOUP_PROTOCOL_FTP_ERROR,
-				     0,
-				     "Unknow : ftp fatal error (%u - %s)",
-				     reply->code,
-				     reply->message->str);
-		}
-		return FALSE;
-	}
-	else {
+	g_return_val_if_fail (ftp_check_reply (protocol, reply, error), NULL);
+	if (reply->code != 257) {
 		g_set_error (error,
-			     SOUP_PROTOCOL_FTP_ERROR,
-			     0,
-			     "Unknown : error detected (%u - %s)",
+			     G_IO_ERROR,
+			     G_IO_ERROR_FAILED,
+			     "ProtocolFTP : PWD command get unexpected reply code : %u - %s",
 			     reply->code,
 			     reply->message->str);
-		return FALSE;
+		return NULL;
 	}
-}
+	current_path = g_strndup (reply->message->str + 1,
+				  g_strrstr (reply->message->str , "\"") - reply->message->str - 1);
 
+	return current_path;
+}
 
 SoupProtocolFTPReply *
 ftp_receive_reply (SoupProtocolFTP				 *protocol,
@@ -1363,38 +1385,6 @@ protocol_ftp_retr (SoupProtocolFTP	 *protocol,
 	return G_INPUT_STREAM (sstream);
 }
 
-static gchar *
-protocol_ftp_pwd (SoupProtocolFTP *protocol, GError **error)
-{
-	SoupProtocolFTPPrivate *priv;
-	SoupProtocolFTPReply *reply;
-	gchar *current_path;
-
-	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
-
-	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
-
-	reply = ftp_send_and_recv (protocol, "PWD", priv->async_cancellable, error);
-	if (reply == NULL)
-		return NULL;
-	else if (!ftp_check_reply (protocol, reply, error))
-		return NULL;
-	else if (reply->code != 257) {
-		g_set_error (error,
-			     G_IO_ERROR,
-			     G_IO_ERROR_NOT_SUPPORTED,
-			     "ProtocolFTP : PWD command get unexpected reply code : %u - %s",
-			     reply->code,
-			     reply->message->str);
-		ftp_reply_free (reply);
-		return NULL;
-	}
-	current_path = g_strndup (reply->message->str + 1,
-				  g_strrstr (reply->message->str , "\"") - reply->message->str - 1);
-
-	return current_path;
-}
-
 GInputStream *
 soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			    SoupURI			*uri,
@@ -1436,8 +1426,8 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 			return NULL;
 	}
 	// TODO : check errors returned by protocol_ftp_list and retr
-	g_debug ("Path : %s", uri->path);
-	priv->current_path = protocol_ftp_pwd (protocol_ftp, error);
+	reply = ftp_send_and_recv (protocol_ftp, "PWD", priv->async_cancellable, error);
+	priv->current_path = ftp_parse_pwd_reply (protocol_ftp, reply, error);
 	if (priv->current_path == NULL)
 		return NULL;
 	if (g_str_has_suffix (uri->path, "/")) {
