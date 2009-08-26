@@ -73,19 +73,23 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 			       GType		  type)
 {
 	SoupURILoaderPrivate *priv;
+	gchar *scheme_down;
 
 	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), FALSE);
 	g_return_val_if_fail (scheme != NULL, FALSE);
 	g_return_val_if_fail (g_type_is_a (type, SOUP_TYPE_PROTOCOL), FALSE);
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
-	if (g_hash_table_lookup (priv->protocol_types, scheme) != NULL)
+	scheme_down = g_ascii_strdown (scheme, -1);
+	if (g_hash_table_lookup (priv->protocol_types, scheme_down) != NULL) {
+		g_free (scheme_down);
 		return FALSE;
-	g_hash_table_insert (priv->protocol_types, g_strdup (scheme), GSIZE_TO_POINTER (type));
-
-	g_debug ("Protocol added : %s", scheme);
-
-	return TRUE;
+	}
+	else {
+		g_hash_table_insert (priv->protocol_types, scheme_down, GSIZE_TO_POINTER (type));
+		g_debug ("Protocol added : %s", scheme_down);
+		return TRUE;
+	}
 }
 
 gboolean
@@ -95,15 +99,19 @@ soup_uri_loader_remove_protocol (SoupURILoader	*loader,
 	SoupURILoaderPrivate *priv;
 	GType protocol_type;
 	GSList *tmp, *prev = NULL;
+	gchar *scheme_down;
+	gboolean result;
 
 	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), FALSE);
 	g_return_val_if_fail (scheme != NULL, FALSE);
 
 	priv = SOUP_URI_LOADER_GET_PRIVATE (loader);
-
-	protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, scheme));
-	if (protocol_type == 0)
+	scheme_down = g_ascii_strdown (scheme, -1);
+	protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, scheme_down));
+	if (protocol_type == 0) {
+		g_free (scheme_down);
 		return FALSE;
+	}
 	tmp = priv->protocols;
 	while (tmp) {
 		if (G_TYPE_CHECK_INSTANCE_TYPE (tmp->data, protocol_type)) {
@@ -124,9 +132,11 @@ soup_uri_loader_remove_protocol (SoupURILoader	*loader,
 		}
 	}
 
-	g_debug ("Protocol removed : %s", scheme);
+	result = g_hash_table_remove (priv->protocol_types, scheme_down);
+	g_debug ("Protocol removed : %s", scheme_down);
+	g_free (scheme_down);
 
-	return g_hash_table_remove (priv->protocol_types, scheme);
+	return result;
 }
 
 static gint
