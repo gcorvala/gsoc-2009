@@ -86,8 +86,9 @@ soup_uri_loader_add_protocol (SoupURILoader	 *loader,
 		return FALSE;
 	}
 	else {
-		g_hash_table_insert (priv->protocol_types, scheme_down, GSIZE_TO_POINTER (type));
+		g_hash_table_insert (priv->protocol_types, g_strdup (scheme_down), GSIZE_TO_POINTER (type));
 		g_debug ("Protocol added : %s", scheme_down);
+		g_free (scheme_down);
 		return TRUE;
 	}
 }
@@ -178,8 +179,7 @@ soup_uri_loader_load_uri (SoupURILoader	 *loader,
 			return NULL;
 		}
 		protocol = g_object_new (protocol_type, NULL);
-		if (protocol != NULL)
-			priv->protocols = g_slist_prepend (priv->protocols, protocol);
+		priv->protocols = g_slist_prepend (priv->protocols, protocol);
 	}
 	else
 		protocol = SOUP_PROTOCOL (search->data);
@@ -238,19 +238,25 @@ soup_uri_loader_load_uri_async (SoupURILoader		*loader,
 					    callback,
 					    user_data,
 					    soup_uri_loader_load_uri_async);
+
 	search = g_slist_find_custom (priv->protocols, uri, compare_protocol);
 	if (search == NULL) {
 		protocol_type = GPOINTER_TO_SIZE (g_hash_table_lookup (priv->protocol_types, uri->scheme));
 		if (protocol_type == 0) {
-			g_debug ("Protocol not supported : %s", uri->scheme);
+			g_simple_async_result_set_error (result,
+							 G_IO_ERROR,
+							 G_IO_ERROR_NOT_SUPPORTED,
+							 "Protocol not supported : %s",
+							 uri->scheme);
+			g_simple_async_result_complete (result);
 			return;
 		}
 		protocol = g_object_new (protocol_type, NULL);
-		if (protocol != NULL)
-			priv->protocols = g_slist_prepend (priv->protocols, protocol);
+		priv->protocols = g_slist_prepend (priv->protocols, protocol);
 	}
 	else
 		protocol = SOUP_PROTOCOL (search->data);
+
 	soup_protocol_load_uri_async (protocol, uri, cancellable, load_uri_cb, result);
 }
 
@@ -265,7 +271,7 @@ soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 	g_debug ("soup_uri_loader_load_uri_finish finish");
 
 	g_return_val_if_fail (SOUP_IS_URI_LOADER (loader), NULL);
-	g_return_val_if_fail (G_IS_ASYNC_RESULT (result), NULL);
+	g_return_val_if_fail (G_IS_SIMPLE_ASYNC_RESULT (result), NULL);
 	g_return_val_if_fail (g_simple_async_result_is_valid (result,
 							      G_OBJECT (loader),
 							      soup_uri_loader_load_uri_async), NULL);
@@ -274,6 +280,6 @@ soup_uri_loader_load_uri_finish (SoupURILoader	 *loader,
 	if (g_simple_async_result_propagate_error (simple, error))
 		return NULL;
 	input_stream = g_simple_async_result_get_op_res_gpointer (simple);
-
+	g_object_unref (simple);
 	return input_stream;
 }
