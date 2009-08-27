@@ -54,7 +54,7 @@ typedef enum {
 typedef struct
 {
 	guint16		code;
-	GString        *message;
+	gchar		*message;
 	gboolean	multi_line;	// must be TRUE if reply is multi_line, actually, alway FALSE ( see ftp_receive_reply )
 } SoupProtocolFTPReply;
 
@@ -261,7 +261,7 @@ protocol_ftp_check_reply (SoupProtocolFTP	 *protocol,
 				     G_IO_ERROR_FAILED,
 				     "FTP : Try again later (%u - %s)",
 				     reply->code,
-				     reply->message->str);
+				     reply->message);
 		}
 		return FALSE;
 	}
@@ -290,7 +290,7 @@ protocol_ftp_check_reply (SoupProtocolFTP	 *protocol,
 				     G_IO_ERROR_FAILED,
 				     "FTP : Fatal error (%u - %s)",
 				     reply->code,
-				     reply->message->str);
+				     reply->message);
 		}
 		return FALSE;
 	}
@@ -300,7 +300,7 @@ protocol_ftp_check_reply (SoupProtocolFTP	 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Fatal error (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 }
@@ -333,7 +333,7 @@ ftp_parse_feat_reply (SoupProtocolFTP		*protocol,
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	if (reply->code != 211)
 		return FALSE;
-	split = g_strsplit (reply->message->str, "\n", 0);
+	split = g_strsplit (reply->message, "\n", 0);
 	for (i = 1; split[i + 1]; ++i)
 	{
 		if (!g_ascii_isspace (split[i][0])) {
@@ -373,13 +373,13 @@ protocol_ftp_parse_pasv_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return NULL;
 	}
 	else {
 		// TODO : how to check if the split is fine
 		split = g_regex_split_simple ("([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*)",
-					      reply->message->str,
+					      reply->message,
 					      G_REGEX_CASELESS,
 					      G_REGEX_MATCH_NOTEMPTY);
 		hostname = g_strdup_printf ("%s.%s.%s.%s", split[1], split[2], split[3], split[4]);
@@ -406,11 +406,11 @@ protocol_ftp_parse_pwd_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return NULL;
 	}
-	current_path = g_strndup (reply->message->str + 1,
-				  g_strrstr (reply->message->str , "\"") - reply->message->str - 1);
+	current_path = g_strndup (reply->message + 1,
+				  g_strrstr (reply->message, "\"") - reply->message - 1);
 
 	return current_path;
 }
@@ -434,7 +434,7 @@ protocol_ftp_parse_welcome_reply (SoupProtocolFTP	 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 	else
@@ -453,7 +453,7 @@ protocol_ftp_parse_user_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 	else
@@ -479,7 +479,7 @@ protocol_ftp_parse_pass_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 	else
@@ -498,7 +498,7 @@ protocol_ftp_parse_cwd_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 	else
@@ -517,7 +517,7 @@ protocol_ftp_parse_quit_reply (SoupProtocolFTP		 *protocol,
 			     G_IO_ERROR_FAILED,
 			     "FTP : Unexpected reply (%u - %s)",
 			     reply->code,
-			     reply->message->str);
+			     reply->message);
 		return FALSE;
 	}
 	else
@@ -530,7 +530,7 @@ ftp_receive_reply (SoupProtocolFTP				 *protocol,
 {
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
-	gchar *buffer;
+	gchar *buffer, *tmp;
 	gsize len;
 	gboolean multi_line = FALSE;
 
@@ -550,22 +550,20 @@ ftp_receive_reply (SoupProtocolFTP				 *protocol,
 		     + g_ascii_digit_value (buffer[2]);
 	if (buffer[3] == '-')
 		multi_line = TRUE;
-	reply->message = g_string_new (NULL);
-	g_string_append (reply->message, buffer + 4);
+	reply->message = g_strdup (buffer + 4);
+	g_free (buffer);
 	while (multi_line)
 	{
-		g_string_append_c (reply->message, '\n');
 		buffer = g_data_input_stream_read_line (priv->control_input, &len, priv->cancellable, error);
-
+		tmp = reply->message;
+		reply->message = g_strjoin ("\n", tmp, buffer, NULL);
+		g_free (tmp);
 		if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code &&
 		    g_ascii_isspace (buffer[3]))
 			multi_line = FALSE;
-		else
-			g_string_append (reply->message, buffer);
+		g_free (buffer);
 	}
-	g_free (buffer);
-
-	g_debug (" [sync] <--- [%u] %s", reply->code, reply->message->str);
+	g_debug (" [sync] <--- [%u] %s", reply->code, reply->message);
 
 	return reply;
 }
@@ -580,7 +578,6 @@ ftp_receive_reply_async (SoupProtocolFTP			 *protocol,
 
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	reply = g_malloc0 (sizeof (SoupProtocolFTPReply));
-	reply->message = g_string_new (NULL);
 	priv->_async_result = g_simple_async_result_new (G_OBJECT (protocol),
 							    callback,
 							    NULL,
@@ -605,7 +602,7 @@ ftp_receive_reply_multi_async (GObject *source_object,
 	SoupProtocolFTPReply *reply;
 	GError *error = NULL;
 	gsize len;
-	gchar *buffer;
+	gchar *buffer, *tmp;
 
 	buffer = g_data_input_stream_read_line_finish (priv->control_input,
 						       read_res,
@@ -636,27 +633,22 @@ ftp_receive_reply_multi_async (GObject *source_object,
 			g_free (buffer);
 			return;
 		}
-		if (reply->message->len == 0) {
+		if (strlen (reply->message) == 0) {
 			reply->code = 100 * g_ascii_digit_value (buffer[0])
 				    + 10 * g_ascii_digit_value (buffer[1])
 				    + g_ascii_digit_value (buffer[2]);
-			g_string_append (reply->message, buffer + 4);
+			reply->message = g_strdup (buffer + 4);
 			if (buffer[3] == '-')
 				reply->multi_line = TRUE;
 			g_free (buffer);
 		}
 		else if (reply->multi_line) {
-			g_string_append_c (reply->message, '\n');
-			if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code) {
-				if (g_ascii_isspace (buffer[3])) {
-					reply->multi_line = FALSE;
-					g_string_append (reply->message, buffer + 4);
-				}
-				else if (buffer[3] == '-')
-					g_string_append (reply->message, buffer + 4);
-			}
-			else
-				g_string_append (reply->message, buffer);
+			tmp = reply->message;
+			reply->message = g_strjoin ("\n", tmp, buffer, NULL);
+			g_free (tmp);
+			if (SOUP_PARSE_FTP_STATUS (buffer) == reply->code
+			    && g_ascii_isspace (buffer[3]))
+				reply->multi_line = FALSE;
 			g_free (buffer);
 		}
 		if (reply->multi_line) {
@@ -668,7 +660,7 @@ ftp_receive_reply_multi_async (GObject *source_object,
 			return;
 		}
 		else {
-			g_debug ("[async] <--- [%u] %s", reply->code, reply->message->str);
+			g_debug ("[async] <--- [%u] %s", reply->code, reply->message);
 			g_simple_async_result_complete (priv->_async_result);
 			return;
 		}
@@ -1641,7 +1633,7 @@ ftp_uri_hash_equal (gconstpointer a,
 void
 ftp_reply_free (SoupProtocolFTPReply *reply)
 {
-	g_string_free (reply->message, TRUE);
+	g_free (reply->message);
 }
 
 SoupProtocolFTPReply *
@@ -1650,7 +1642,7 @@ ftp_reply_copy (SoupProtocolFTPReply *reply)
 	SoupProtocolFTPReply *dup;
 
 	dup = g_malloc0 (sizeof (SoupProtocolFTPReply));
-	dup->message = g_string_new (reply->message->str);
+	dup->message = g_strdup (reply->message);
 	dup->code = reply->code;
 	dup->multi_line = reply->multi_line;
 
