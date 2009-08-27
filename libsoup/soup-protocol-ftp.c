@@ -426,6 +426,32 @@ ftp_parse_pwd_reply (SoupProtocolFTP		 *protocol,
 	return current_path;
 }
 
+static gboolean
+ftp_parse_welcome_reply (SoupProtocolFTP	 *protocol,
+			 SoupProtocolFTPReply	 *reply,
+			 GError			**error)
+{
+	g_return_val_if_fail (ftp_check_reply (protocol, reply, error), FALSE);
+	if (reply->code == 120) {
+		g_set_error_literal (error,
+				     G_IO_ERROR,
+				     G_IO_ERROR_FAILED,
+				     "FTP : Try again later (connection)");
+		return FALSE;
+	}
+	else if (reply->code != 220) {
+		g_set_error (error,
+			     G_IO_ERROR,
+			     G_IO_ERROR_FAILED,
+			     "FTP : Unexpected reply (%u - %s)",
+			     reply->code,
+			     reply->message->str);
+		return FALSE;
+	}
+	else
+		return TRUE;
+}
+
 SoupProtocolFTPReply *
 ftp_receive_reply (SoupProtocolFTP				 *protocol,
 		   GCancellable					 *cancellable,
@@ -1399,7 +1425,9 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	GFileInfo *info;
 	gchar *needed_directory, *msg;
 
-	g_debug ("soup_protocol_ftp_load_uri called : [%s]", soup_uri_to_string (uri, FALSE));
+	g_debug ("soup_protocol_ftp_load_uri called : [%s]",
+		 soup_uri_to_string (uri, FALSE));
+
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
 	g_return_val_if_fail (uri != NULL, NULL);
 
@@ -1408,19 +1436,20 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 
 	priv->uri = soup_uri_copy (uri);
 	priv->async_cancellable = cancellable;
-	if (!priv->control) {
+	if (priv->control == NULL) {
 		priv->control = g_socket_client_connect_to_host (g_socket_client_new (),
 								 uri->host,
 								 uri->port,
 								 priv->async_cancellable,
 								 error);
-		if (!priv->control)
+		if (priv->control == NULL)
 			return NULL;
 		priv->control_input = g_data_input_stream_new (g_io_stream_get_input_stream (G_IO_STREAM (priv->control)));
 		g_data_input_stream_set_newline_type (priv->control_input, G_DATA_STREAM_NEWLINE_TYPE_CR_LF);
 		priv->control_output = g_io_stream_get_output_stream (G_IO_STREAM (priv->control));
 		reply = ftp_receive_reply (protocol_ftp, priv->async_cancellable, error);
-		// check welcome code
+		if (reply == NULL || !ftp_parse_welcome_reply (protocol_ftp, reply, error))
+			return NULL;
 		ftp_reply_free (reply);
 		if (!protocol_ftp_auth (protocol_ftp, error))
 			return NULL;
@@ -1428,7 +1457,9 @@ soup_protocol_ftp_load_uri (SoupProtocol		*protocol,
 	// TODO : check errors returned by protocol_ftp_list and retr
 	if (priv->working_directory == NULL) {
 		reply = ftp_send_and_recv (protocol_ftp, "PWD", priv->async_cancellable, error);
-		if (!ftp_check_reply (protocol_ftp, reply, error))
+		if (reply == NULL)
+			return NULL;
+		else if (!ftp_check_reply (protocol_ftp, reply, error))
 			return NULL;
 		priv->working_directory = ftp_parse_pwd_reply (protocol_ftp, reply, error);
 		if (priv->working_directory == NULL)
