@@ -28,14 +28,6 @@ struct _SoupProtocolFTPPrivate
 
 	GCancellable		*cancellable;
 
-	/* main async call (load_uri_async) */
-	GSimpleAsyncResult	*async_result;
-	GError			*async_error;
-	/* internal async call vars*/
-	GSimpleAsyncResult	*_async_result;
-	GSimpleAsyncResult	*_async_result_2;
-	GAsyncReadyCallback	 _async_callback;
-	/* lock */
 	gboolean		 busy;
 };
 
@@ -140,12 +132,6 @@ soup_protocol_ftp_finalize (GObject *object)
 		g_object_unref (priv->control);
 	if (priv->data)
 		g_object_unref (priv->data);
-	if (priv->async_result)
-		g_object_unref (priv->async_result);
-	if (priv->async_error)
-		g_error_free (priv->async_error);
-	if (priv->_async_result)
-		g_object_unref (priv->_async_result);
 
 	G_OBJECT_CLASS (soup_protocol_ftp_parent_class)->finalize (object);
 }
@@ -1019,52 +1005,54 @@ protocol_ftp_auth_pass_cb (GObject		 *source,
 	SoupProtocolFTP *protocol;
 	SoupProtocolFTPPrivate *priv;
 	SoupProtocolFTPReply *reply;
+	GSimpleAsyncResult *simple;
 	GError *error = NULL;
 
 	g_return_if_fail (SOUP_IS_PROTOCOL_FTP (source));
 	g_return_if_fail (G_IS_SIMPLE_ASYNC_RESULT (res));
 
+	simple = G_SIMPLE_ASYNC_RESULT (user_data);
 	protocol = SOUP_PROTOCOL_FTP (source);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol);
 	reply = protocol_ftp_send_and_recv_finish (protocol, res, &error);
 
 	if (!reply) {
-		g_simple_async_result_set_from_error (priv->_async_result_2, error);
-		g_simple_async_result_set_op_res_gboolean (priv->_async_result_2, FALSE);
-		g_simple_async_result_complete (priv->_async_result_2);
+		g_simple_async_result_set_from_error (simple, error);
+		g_simple_async_result_set_op_res_gboolean (simple, FALSE);
+		g_simple_async_result_complete (simple);
 		return;
 	}
 	if (!protocol_ftp_check_reply (protocol, reply, &error)) {
 		protocol_ftp_reply_free (reply);
-		g_simple_async_result_set_from_error (priv->_async_result_2, error);
-		g_simple_async_result_set_op_res_gboolean (priv->_async_result_2, FALSE);
-		g_simple_async_result_complete (priv->_async_result_2);
+		g_simple_async_result_set_from_error (simple, error);
+		g_simple_async_result_set_op_res_gboolean (simple, FALSE);
+		g_simple_async_result_complete (simple);
 		return;
 	}
 	else if (reply->code == 230) {
 		protocol_ftp_reply_free (reply);
-		g_simple_async_result_set_op_res_gboolean (priv->_async_result_2, TRUE);
-		g_simple_async_result_complete (priv->_async_result_2);
+		g_simple_async_result_set_op_res_gboolean (simple, TRUE);
+		g_simple_async_result_complete (simple);
 		return;
 	}
 	else if (reply->code == 332) {
 		protocol_ftp_reply_free (reply);
-		g_simple_async_result_set_error (priv->_async_result_2,
+		g_simple_async_result_set_error (simple,
 						 SOUP_PROTOCOL_FTP_ERROR,
 						 0,
 						 "Authentication : ACCT not implemented");
-		g_simple_async_result_set_op_res_gboolean (priv->_async_result_2, FALSE);
-		g_simple_async_result_complete (priv->_async_result_2);
+		g_simple_async_result_set_op_res_gboolean (simple, FALSE);
+		g_simple_async_result_complete (simple);
 		return;
 	}
 	else {
 		protocol_ftp_reply_free (reply);
-		g_simple_async_result_set_error (priv->_async_result_2,
+		g_simple_async_result_set_error (simple,
 						 SOUP_PROTOCOL_FTP_ERROR,
 						 0,
 						 "Authentication : Unexpected reply received");
-		g_simple_async_result_set_op_res_gboolean (priv->_async_result_2, FALSE);
-		g_simple_async_result_complete (priv->_async_result_2);
+		g_simple_async_result_set_op_res_gboolean (simple, FALSE);
+		g_simple_async_result_complete (simple);
 		return;
 	}
 }
@@ -1159,8 +1147,6 @@ protocol_ftp_auth_finish (SoupProtocolFTP	 *protocol,
 		res = FALSE;
 	else
 		res = g_simple_async_result_get_op_res_gboolean (simple);
-	//g_object_unref (priv->_async_result);
-	priv->_async_result = NULL;
 
 	return res;
 }
@@ -1715,16 +1701,18 @@ soup_protocol_ftp_load_uri_finish (SoupProtocol	 *protocol,
 	SoupProtocolFTP *protocol_ftp;
 	SoupProtocolFTPPrivate *priv;
 	GInputStream *input_stream;
+	GSimpleAsyncResult *simple;
 	SoupInputStream *soup_stream;
 
 	g_debug ("soup_protocol_ftp_load_uri_finish called");
 
 	g_return_val_if_fail (SOUP_IS_PROTOCOL_FTP (protocol), NULL);
 
+	simple = G_SIMPLE_ASYNC_RESULT (result);
 	protocol_ftp = SOUP_PROTOCOL_FTP (protocol);
 	priv = SOUP_PROTOCOL_FTP_GET_PRIVATE (protocol_ftp);
 
-	if (g_simple_async_result_propagate_error (G_SIMPLE_ASYNC_RESULT (result), error))
+	if (g_simple_async_result_propagate_error (simple, error))
 		return NULL;
 	input_stream = g_io_stream_get_input_stream (G_IO_STREAM (priv->data));
 	soup_stream = soup_input_stream_new (input_stream, NULL, NULL);
@@ -1732,8 +1720,6 @@ soup_protocol_ftp_load_uri_finish (SoupProtocol	 *protocol,
 			  G_CALLBACK (protocol_ftp_retr_complete), protocol_ftp);
 	g_signal_connect (soup_stream, "stream-closed",
 			  G_CALLBACK (protocol_ftp_retr_complete), protocol_ftp);
-	g_object_unref (priv->async_result);
-	priv->async_result = NULL;
 
 	return G_INPUT_STREAM (soup_stream);
 }
@@ -1801,17 +1787,15 @@ ftp_callback_feat (GObject *source_object,
 			}
 		}
 		else {
-			g_simple_async_result_set_from_error (priv->async_result,
-							      error);
-			g_simple_async_result_complete (priv->async_result);
+			g_simple_async_result_set_from_error (simple, error);
+			g_simple_async_result_complete (simple);
 			g_error_free (error);
 		}
 		protocol_ftp_reply_free (reply);
 	}
 	else {
-		g_simple_async_result_set_from_error (priv->async_result,
-						      error);
-		g_simple_async_result_complete (priv->async_result);
+		g_simple_async_result_set_from_error (simple, error);
+		g_simple_async_result_complete (simple);
 		g_error_free (error);
 	}
 }
@@ -1847,26 +1831,24 @@ ftp_callback_pasv (GObject *source_object,
 								       simple);
 				}
 				else {
-					g_simple_async_result_set_error (priv->async_result,
+					g_simple_async_result_set_error (simple,
 									 SOUP_PROTOCOL_FTP_ERROR,
 									 0,
 									 "Passive failed");
-					g_simple_async_result_complete (priv->async_result);
+					g_simple_async_result_complete (simple);
 				}
 			}
 		}
 		else {
-			g_simple_async_result_set_from_error (priv->async_result,
-							      error);
-			g_simple_async_result_complete (priv->async_result);
+			g_simple_async_result_set_from_error (simple, error);
+			g_simple_async_result_complete (simple);
 			g_error_free (error);
 		}
 		protocol_ftp_reply_free (reply);
 	}
 	else {
-		g_simple_async_result_set_from_error (priv->async_result,
-						      error);
-		g_simple_async_result_complete (priv->async_result);
+		g_simple_async_result_set_from_error (simple, error);
+		g_simple_async_result_complete (simple);
 		g_error_free (error);
 	}
 }
@@ -1903,17 +1885,18 @@ ftp_callback_data (GObject *source_object,
 			g_free (msg);
 		}
 		else {
-			g_simple_async_result_set_error (priv->async_result,
+			g_simple_async_result_set_error (simple,
 							 SOUP_PROTOCOL_FTP_ERROR,
 							 SOUP_FTP_INVALID_PATH,
 							 "Path decode failed");
-			g_simple_async_result_complete (priv->async_result);
+			g_simple_async_result_complete (simple);
+			g_object_unref (simple);
 		}
 	}
 	else {
-		g_simple_async_result_set_from_error (priv->async_result,
-						      error);
-		g_simple_async_result_complete (priv->async_result);
+		g_simple_async_result_set_from_error (simple, error);
+		g_simple_async_result_complete (simple);
+		g_object_unref (simple);
 		g_error_free (error);
 	}
 }
