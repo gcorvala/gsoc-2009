@@ -25,8 +25,6 @@ soup_protocol_load_uri (SoupProtocol		*protocol,
 {
 	GInputStream *input_stream;
 
-	g_debug ("soup_protocol_load_uri called");
-
 	g_return_val_if_fail (SOUP_IS_PROTOCOL (protocol), NULL);
 	g_return_val_if_fail (SOUP_PROTOCOL_GET_CLASS (protocol)->load_uri != NULL, NULL);
 	g_return_val_if_fail (uri != NULL, NULL);
