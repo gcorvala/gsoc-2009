@@ -146,9 +146,6 @@ void		      ftp_callback_retr			(GObject *source_object,
 /* misc methods */
 GQuark		      soup_protocol_ftp_error_quark	(void);
 
-gboolean	      ftp_uri_hash_equal		(gconstpointer a,
-							 gconstpointer b);
-
 static void
 soup_protocol_ftp_finalize (GObject *object)
 {
@@ -1622,23 +1619,6 @@ soup_protocol_ftp_error_quark (void)
 	if (!error)
 		error = g_quark_from_static_string ("soup_protocol_ftp_error_quark");
 	return error;
-}
-
-gboolean
-ftp_uri_hash_equal (gconstpointer a,
-		    gconstpointer b)
-{
-	const SoupURI *uri_a, *uri_b;
-
-	uri_a = (SoupURI *) a;
-	uri_b = (SoupURI *) b;
-
-	if (!soup_uri_host_equal (uri_a, uri_b) ||
-	    g_strcmp0 (uri_a->user, uri_b->user) ||
-	    g_strcmp0 (uri_a->password, uri_b->password))
-	    return FALSE;
-
-	return TRUE;
 }
 
 /**
