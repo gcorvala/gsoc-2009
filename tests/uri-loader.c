@@ -68,6 +68,7 @@ main (int argc, char **argv)
 	gsize len;
 	GFileInfo *info;
 	GList *file_list = NULL;
+	GMainLoop *loop;
 
 	g_type_init ();
 	g_thread_init (NULL);
@@ -255,19 +256,21 @@ main (int argc, char **argv)
 
 	g_object_unref (loader);
 
+	loader = soup_uri_loader_new ();
+
 	/**
 	 * Test async
 	 **/
 
-	//GMainLoop *loop = g_main_loop_new (NULL, TRUE);
+	loop = g_main_loop_new (NULL, TRUE);
 
-	//soup_uri_loader_load_uri_async (loader,
-					//uri2,
-					//NULL,
-					//callback,
-					//NULL);
+	soup_uri_loader_load_uri_async (loader,
+					uri2,
+					NULL,
+					callback,
+					NULL);
 
-	//g_main_loop_run (loop);
+	g_main_loop_run (loop);
 
 	return 0;
 }
